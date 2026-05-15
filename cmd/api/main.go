@@ -6,10 +6,18 @@ import (
 	"net/http"
 	"oracle/config"
 	"oracle/internal/handler"
+	"oracle/pkg/db"
 )
 
 func main() {
 	cfg := config.Load()
+
+	database, err := db.Connect(cfg.DB)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	log.Println("database connected")
+	_ = database
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.Health)
