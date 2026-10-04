@@ -27,11 +27,12 @@ func TestSimulate(t *testing.T) {
 		wantExit int
 		wantOK   bool
 	}{
-		{"target", []quote.Quote{{Open: 10, High: 12.5, Low: 9.8, Close: 12}}, 0.2, i + 1, true},
-		{"stop wins when both hit", []quote.Quote{{Open: 10, High: 12.5, Low: 8, Close: 9}}, -0.15, i + 1, true},
-		{"gap below stop exits at open", []quote.Quote{{Open: 10, High: 10.2, Low: 9.8, Close: 10}, {Open: 8, High: 8.2, Low: 7.9, Close: 8}}, -0.2, i + 2, true},
-		{"time exit", []quote.Quote{{Open: 10, High: 10.5, Low: 9.5, Close: 10}, {Open: 10, High: 10.5, Low: 9.5, Close: 10}, {Open: 10, High: 10.5, Low: 9.5, Close: 10.4}}, 0.04, i + 3, true},
-		{"open above max entry", []quote.Quote{{Open: 10.6, High: 11, Low: 10.5, Close: 11}}, 0, 0, false},
+		{"target", []quote.Quote{{Open: 10, High: 12.5, Low: 9.4, Close: 12.2}}, 12/9.5 - 1, i + 1, true},
+		{"limit not reached", []quote.Quote{{Open: 10, High: 10.5, Low: 9.6, Close: 10}}, 0, 0, false},
+		{"stop on entry day", []quote.Quote{{Open: 10, High: 12.5, Low: 8, Close: 9}}, 8.5/9.5 - 1, i + 1, true},
+		{"target touched on entry day is ignored", []quote.Quote{{Open: 10, High: 12.5, Low: 9.4, Close: 10}, {Open: 10, High: 10.5, Low: 9.5, Close: 10}, {Open: 10, High: 10.5, Low: 9.5, Close: 10.4}}, 10.4/9.5 - 1, i + 3, true},
+		{"gap below limit enters at open", []quote.Quote{{Open: 9, High: 9.2, Low: 8.9, Close: 9.1}, {Open: 8, High: 8.2, Low: 7.9, Close: 8}}, 8.0/9 - 1, i + 2, true},
+		{"open at stop", []quote.Quote{{Open: 8.5, High: 9, Low: 8, Close: 9}}, 0, 0, false},
 	}
 
 	for _, tt := range tests {

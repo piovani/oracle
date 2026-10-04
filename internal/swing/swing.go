@@ -28,6 +28,19 @@ type Params struct {
 	MinVolume float64
 }
 
+type Tier struct {
+	Oversold float64
+	Label    string
+	Rule     string
+}
+
+var Tiers = []Tier{
+	{10, "forte", "RSI(2) < 10"},
+	{30, "médio", "RSI(2) < 30"},
+	{50, "fraco", "RSI(2) < 50"},
+	{101, "tendência", "sem recuo"},
+}
+
 func DefaultParams() Params {
 	return Params{
 		TargetATR: 1,
@@ -36,7 +49,7 @@ func DefaultParams() Params {
 		MaxHold:   5,
 		Oversold:  10,
 		CostPct:   0.03,
-		MinTrades: 10,
+		MinTrades: 5,
 		MinVolume: 5_000_000,
 	}
 }
@@ -120,7 +133,7 @@ func Analyze(ticker string, bars []quote.Quote, p Params) Analysis {
 		volatility := atr(bars, last)
 		a.Signal = true
 		a.Close = bars[last].Close
-		a.MaxEntry = round(a.Close + p.EntryATR*volatility)
+		a.MaxEntry = round(a.Close - p.EntryATR*volatility)
 		a.Target = round(a.Close + p.TargetATR*volatility)
 		a.Stop = round(a.Close - p.StopATR*volatility)
 	}
@@ -178,21 +191,32 @@ func (p Params) simulate(bars []quote.Quote, i int) (ret float64, exit int, ok b
 	stop := ref - p.StopATR*volatility
 	target := ref + p.TargetATR*volatility
 
-	entry := bars[i+1].Open
-	if entry <= stop || entry > ref+p.EntryATR*volatility {
+	limit := ref - p.EntryATR*volatility
+	first := bars[i+1]
+	if first.Low > limit || first.Open <= stop {
 		return 0, 0, false
 	}
+	entry := min(first.Open, limit)
 
 	exit = i + p.MaxHold
 	price := bars[exit].Close
 	for j := i + 1; j <= i+p.MaxHold; j++ {
 		bar := bars[j]
 		if bar.Low <= stop {
-			exit, price = j, min(bar.Open, stop)
+			exit, price = j, stop
+			if j > i+1 {
+				price = min(bar.Open, stop)
+			}
 			break
 		}
+		if j == i+1 && bar.Close < target {
+			continue
+		}
 		if bar.High >= target {
-			exit, price = j, max(bar.Open, target)
+			exit, price = j, target
+			if j > i+1 {
+				price = max(bar.Open, target)
+			}
 			break
 		}
 	}

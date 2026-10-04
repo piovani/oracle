@@ -19,19 +19,6 @@ import (
 	"oracle/pkg/db"
 )
 
-type tier struct {
-	oversold float64
-	label    string
-	rule     string
-}
-
-var tiers = []tier{
-	{10, "forte", "RSI(2) < 10"},
-	{30, "médio", "RSI(2) < 30"},
-	{50, "fraco", "RSI(2) < 50"},
-	{101, "tendência", "sem recuo"},
-}
-
 type row struct {
 	swing.Pick
 	name     string
@@ -39,7 +26,7 @@ type row struct {
 }
 
 type summary struct {
-	tier       tier
+	tier       swing.Tier
 	candidates int
 	trades     int
 	wins       int
@@ -52,7 +39,7 @@ func main() {
 	risk := flag.Float64("risk", 2, "max loss per trade as a percentage of capital")
 	years := flag.Int("years", 3, "years of history used in the backtest")
 	noEstimates := flag.Bool("no-estimates", false, "skip analyst estimates")
-	strict := flag.Bool("strict", false, "only strong signals, even if fewer stocks are returned")
+	fill := flag.Bool("fill", false, "complete the list with weaker signals")
 	flag.Parse()
 
 	cfg := config.Load()
@@ -91,8 +78,8 @@ func main() {
 		summaries []summary
 		seen      = make(map[string]bool)
 	)
-	for _, t := range tiers {
-		params.Oversold = t.oversold
+	for _, t := range swing.Tiers {
+		params.Oversold = t.Oversold
 		s := summary{tier: t}
 
 		var (
@@ -126,9 +113,9 @@ func main() {
 			}
 			seen[pick.Ticker] = true
 			bars := history[pick.Ticker]
-			rows = append(rows, row{pick, bars[len(bars)-1].Name, t.label})
+			rows = append(rows, row{pick, bars[len(bars)-1].Name, t.Label})
 		}
-		if len(rows) == *top || *strict {
+		if len(rows) == *top || !*fill {
 			break
 		}
 	}
@@ -210,8 +197,9 @@ func report(rows []row, summaries []summary, params swing.Params, latest time.Ti
 	fmt.Printf("\nTotal investido: R$ %.2f | em caixa: R$ %.2f\n", invested, capital-invested)
 
 	fmt.Println("\nComo executar:")
-	fmt.Println("  1. Compre na abertura, no fracionário, somente se o preço estiver acima do STOP e até COMPRA ATÉ.")
-	fmt.Println("  2. Deixe a ordem de venda em VENDA e o stop em STOP.")
+	fmt.Println("  1. Antes da abertura, envie no fracionário uma ordem de compra limitada em COMPRA ATÉ, válida só para o dia.")
+	fmt.Println("     Se o leilão de abertura indicar preço no STOP ou abaixo, cancele. Se a ordem não executar no dia, descarte.")
+	fmt.Println("  2. Comprou: deixe a ordem de venda em VENDA e o stop em STOP.")
 	fmt.Printf("  3. Se nenhum dos dois for atingido em %d pregões, venda no fechamento.\n", params.MaxHold)
 	fmt.Println("  NOTA: consenso dos analistas, de 1 (compra forte) a 5 (venda).")
 
@@ -222,7 +210,7 @@ func report(rows []row, summaries []summary, params swing.Params, latest time.Ti
 			continue
 		}
 		fmt.Fprintf(w, "  %s\t%s\t%d candidatas hoje\t%d operações\t%.1f%% de acerto\t%+.2f%% por operação\n",
-			s.tier.label, s.tier.rule, s.candidates, s.trades, 100*float64(s.wins)/float64(s.trades), 100*s.sum/float64(s.trades))
+			s.tier.Label, s.tier.Rule, s.candidates, s.trades, 100*float64(s.wins)/float64(s.trades), 100*s.sum/float64(s.trades))
 	}
 	w.Flush()
 }
