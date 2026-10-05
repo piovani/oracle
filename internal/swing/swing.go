@@ -111,34 +111,58 @@ func Analyze(ticker string, bars []quote.Quote, p Params) Analysis {
 	}
 
 	for i := trendLen; i+p.MaxHold < n; {
-		if !p.signal(bars, i) {
+		if !p.Signal(bars, i) {
 			i++
 			continue
 		}
-		ret, exit, ok := p.simulate(bars, i)
+		trade, ok := p.Simulate(bars, i)
 		if !ok {
 			i++
 			continue
 		}
 		a.Trades++
-		a.SumReturn += ret
-		if ret > 0 {
+		a.SumReturn += trade.Return
+		if trade.Return > 0 {
 			a.Wins++
 		}
-		i = exit
+		i = trade.ExitIdx
 	}
 
 	last := n - 1
-	if p.signal(bars, last) {
-		volatility := atr(bars, last)
+	if p.Signal(bars, last) {
+		l := p.Levels(bars, last)
 		a.Signal = true
-		a.Close = bars[last].Close
-		a.MaxEntry = round(a.Close - p.EntryATR*volatility)
-		a.Target = round(a.Close + p.TargetATR*volatility)
-		a.Stop = round(a.Close - p.StopATR*volatility)
+		a.Close, a.MaxEntry, a.Target, a.Stop = l.Close, l.MaxEntry, l.Target, l.Stop
 	}
 	return a
 }
+
+// Levels are the order prices planned after the close of bar i.
+type Levels struct {
+	Close    float64
+	MaxEntry float64
+	Target   float64
+	Stop     float64
+}
+
+func (p Params) Levels(bars []quote.Quote, i int) Levels {
+	volatility := atr(bars, i)
+	close := bars[i].Close
+	return Levels{
+		Close:    close,
+		MaxEntry: round(close - p.EntryATR*volatility),
+		Target:   round(close + p.TargetATR*volatility),
+		Stop:     round(close - p.StopATR*volatility),
+	}
+}
+
+// Liquid reports whether the median volume of the volumeLen bars ending at i reaches MinVolume.
+func (p Params) Liquid(bars []quote.Quote, i int) bool {
+	return i >= volumeLen-1 && medianVolume(bars[i-volumeLen+1:i+1]) >= p.MinVolume
+}
+
+// Warmup is the number of bars a series needs before its first signal.
+const Warmup = trendLen
 
 func Rank(all []Analysis, estimates map[string]yahoo.Estimate, p Params, capital, riskPct float64, top int) []Pick {
 	var picks []Pick
@@ -185,7 +209,20 @@ func Rank(all []Analysis, estimates map[string]yahoo.Estimate, p Params, capital
 	return sized
 }
 
-func (p Params) simulate(bars []quote.Quote, i int) (ret float64, exit int, ok bool) {
+// Trade is a simulated operation planned after the close of bar i.
+type Trade struct {
+	Entry   float64
+	Exit    float64
+	ExitIdx int
+	Return  float64
+}
+
+// Simulate plays the plan made after the close of bar i. It reports false when the entry order does not fill.
+// A series that ends before the holding period is closed at its last close.
+func (p Params) Simulate(bars []quote.Quote, i int) (Trade, bool) {
+	if i+1 >= len(bars) {
+		return Trade{}, false
+	}
 	volatility := atr(bars, i)
 	ref := bars[i].Close
 	stop := ref - p.StopATR*volatility
@@ -194,13 +231,14 @@ func (p Params) simulate(bars []quote.Quote, i int) (ret float64, exit int, ok b
 	limit := ref - p.EntryATR*volatility
 	first := bars[i+1]
 	if first.Low > limit || first.Open <= stop {
-		return 0, 0, false
+		return Trade{}, false
 	}
 	entry := min(first.Open, limit)
 
-	exit = i + p.MaxHold
+	last := min(i+p.MaxHold, len(bars)-1)
+	exit := last
 	price := bars[exit].Close
-	for j := i + 1; j <= i+p.MaxHold; j++ {
+	for j := i + 1; j <= last; j++ {
 		bar := bars[j]
 		if bar.Low <= stop {
 			exit, price = j, stop
@@ -220,14 +258,15 @@ func (p Params) simulate(bars []quote.Quote, i int) (ret float64, exit int, ok b
 			break
 		}
 	}
-	return price/entry - 1 - 2*p.CostPct/100, exit, true
+	return Trade{Entry: entry, Exit: price, ExitIdx: exit, Return: price/entry - 1 - 2*p.CostPct/100}, true
 }
 
-func (p Params) signal(bars []quote.Quote, i int) bool {
-	return bars[i].Close > sma(bars, i, trendLen) && rsi(bars, i) < p.Oversold
+// Signal reports whether bar i closes above the trend and oversold.
+func (p Params) Signal(bars []quote.Quote, i int) bool {
+	return i >= trendLen && bars[i].Close > sma(bars, i, trendLen) && RSI(bars, i) < p.Oversold
 }
 
-func rsi(bars []quote.Quote, i int) float64 {
+func RSI(bars []quote.Quote, i int) float64 {
 	gains, losses := 0.0, 0.0
 	for j := i - rsiLen + 1; j <= i; j++ {
 		change := bars[j].Close - bars[j-1].Close
@@ -260,10 +299,24 @@ func atr(bars []quote.Quote, i int) float64 {
 	return sum / atrLen
 }
 
+// Segments splits a series at detected splits and reverse splits, so no segment spans a price discontinuity.
+func Segments(bars []quote.Quote) [][]quote.Quote {
+	var segments [][]quote.Quote
+	start := 0
+	for i := 1; i < len(bars); i++ {
+		if isSplit(bars[i].Close / bars[i-1].Close) {
+			segments = append(segments, bars[start:i])
+			start = i
+		}
+	}
+	return append(segments, bars[start:])
+}
+
+func isSplit(ratio float64) bool { return ratio < splitRatio || ratio > 1/splitRatio }
+
 func continuous(bars []quote.Quote) []quote.Quote {
 	for i := len(bars) - 1; i > 0; i-- {
-		ratio := bars[i].Close / bars[i-1].Close
-		if ratio < splitRatio || ratio > 1/splitRatio {
+		if isSplit(bars[i].Close / bars[i-1].Close) {
 			return bars[i:]
 		}
 	}

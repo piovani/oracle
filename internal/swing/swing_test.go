@@ -41,9 +41,9 @@ func TestSimulate(t *testing.T) {
 			bars = append(bars, tt.next...)
 			bars = append(bars, flat(p.MaxHold, 10)...)
 
-			ret, exit, ok := p.simulate(bars, i)
-			if ok != tt.wantOK || exit != tt.wantExit || math.Abs(ret-tt.wantRet) > 1e-9 {
-				t.Errorf("got (%v, %d, %v), want (%v, %d, %v)", ret, exit, ok, tt.wantRet, tt.wantExit, tt.wantOK)
+			trade, ok := p.Simulate(bars, i)
+			if ok != tt.wantOK || trade.ExitIdx != tt.wantExit || math.Abs(trade.Return-tt.wantRet) > 1e-9 {
+				t.Errorf("got (%v, %d, %v), want (%v, %d, %v)", trade.Return, trade.ExitIdx, ok, tt.wantRet, tt.wantExit, tt.wantOK)
 			}
 		})
 	}
@@ -53,6 +53,26 @@ func TestContinuous(t *testing.T) {
 	bars := append(flat(5, 40), flat(5, 20)...)
 	if got := len(continuous(bars)); got != 5 {
 		t.Errorf("got %d bars after split, want 5", got)
+	}
+}
+
+func TestSimulateTruncatedSeries(t *testing.T) {
+	p := Params{TargetATR: 2, StopATR: 1.5, EntryATR: 0.5, MaxHold: 5}
+	const i = 20
+	bars := flat(i+1, 10)
+	bars = append(bars, quote.Quote{Open: 10, High: 10.5, Low: 9.4, Close: 10}, quote.Quote{Open: 10, High: 10.5, Low: 9.5, Close: 10.3})
+
+	trade, ok := p.Simulate(bars, i)
+	if !ok || trade.ExitIdx != i+2 || trade.Exit != 10.3 {
+		t.Errorf("got %+v, %v, want exit at the last close", trade, ok)
+	}
+}
+
+func TestSegments(t *testing.T) {
+	bars := append(flat(5, 40), flat(5, 20)...)
+	got := Segments(bars)
+	if len(got) != 2 || len(got[0]) != 5 || len(got[1]) != 5 {
+		t.Errorf("got %d segments, want 2 of 5 bars", len(got))
 	}
 }
 

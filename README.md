@@ -48,6 +48,25 @@ A saída traz, para cada ação: nome da empresa, força do sinal, quantidade, p
 3. Comprou: deixe a ordem de venda no alvo e o stop no preço indicado.
 4. Se nenhum dos dois for atingido em 5 pregões, venda no fechamento.
 
+### Backtest
+
+```
+make backtest
+make backtest FROM=2019-01-01 COST=0.1 RANK=rsi CSV=trades.csv
+```
+
+Reproduz a estratégia dia a dia sobre a carteira inteira, com um caixa só e limite de `TOP` posições simultâneas. Em cada dia só usa o que se sabia no fechamento: sinais, preços da ordem, liquidez e o histórico da própria ação (só operações já encerradas, janela de `-lookback` anos). Ações que saíram da bolsa continuam no universo, e splits quebram a série em trechos independentes. Série que acaba com posição aberta é encerrada no último fechamento.
+
+| Variável | Padrão | Significado |
+|---|---|---|
+| `FROM` | 3 anos atrás | primeiro dia do teste (`AAAA-MM-DD`) |
+| `CAPITAL`, `TOP`, `RISK` | 500, 5, 2 | iguais ao `recommend` |
+| `COST` | 0,03 | custo por lado, em % da operação |
+| `RANK` | `expectancy` | `expectancy` filtra e ranqueia pelo histórico da ação (como o `recommend`); `rsi` não faz seleção por ação |
+| `CSV` | — | grava cada operação executada neste arquivo |
+
+Direto pelo binário há ainda `-warmup`, `-lookback`, `-oversold` e `-min-volume`. A saída traz retorno, queda máxima, Sharpe, exposição, taxa de execução das ordens, acerto e um quadro por ano, ao lado de um universo igual-peso (todas as ações líquidas, rebalanceado todo dia) como referência. Não há índice na base, e nem estratégia nem referência incluem dividendos.
+
 ### Limites
 
 - **A vantagem estatística é pequena.** Seis regras de entrada foram testadas em 2015–2021 e validadas em 2022–2026; todas ficaram perto de zero na validação. A regra adotada foi a única não negativa nos dois períodos. Depois foram testadas quinze variações de saída, entrada e filtros; só a ordem limitada melhorou o resultado nos dois períodos (+0,41% e +0,19% por operação, contra +0,07% e +0,04%).
