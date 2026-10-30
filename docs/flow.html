@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluxo do oracle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one reading column; the flow diagram is the hero, the selected command's steps sit right under it. */
+:root {
+  --bg: #f5f7f5;
+  --surface: #ffffff;
+  --fg: #17201c;
+  --muted: #5a6660;
+  --line: #c8d1cc;
+  --accent: #0e6b5b;
+  --accent-soft: #dcefe9;
+  --signal: #a86400;
+  --gain: #1d7a3e;
+  --loss: #b3261e;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1412; --surface: #18201d; --fg: #e3ebe7; --muted: #93a29a; --line: #34413b;
+    --accent: #4fc2ab; --accent-soft: #1d3530; --signal: #f0a43a; --gain: #5cc47f; --loss: #ef6b62;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1412; --surface: #18201d; --fg: #e3ebe7; --muted: #93a29a; --line: #34413b;
+  --accent: #4fc2ab; --accent-soft: #1d3530; --signal: #f0a43a; --gain: #5cc47f; --loss: #ef6b62;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 48px;
+}
+header { display: grid; gap: 8px; max-width: 68ch; }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; margin: 0; text-wrap: balance; font-weight: 700; }
+h2 { font-size: 22px; margin: 0; text-wrap: balance; font-weight: 600; }
+p { margin: 0; }
+.lead { color: var(--muted); font-size: 17px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+section { display: grid; gap: 16px; min-width: 0; }
+section > p { max-width: 68ch; color: var(--muted); }
+
+/* Flow picker */
+.picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker button {
+  font: 500 14px/1 var(--font-mono);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+.picker button:hover { border-color: var(--accent); }
+.picker button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.picker button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.diagram {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; }
+
+/* SVG parts, colored from tokens */
+.node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.node.store rect { fill: var(--accent-soft); stroke: var(--accent); }
+.node.external rect { stroke-dasharray: 5 4; }
+.node.shared rect { stroke: var(--accent); stroke-width: 2; }
+.node .t { fill: var(--fg); font: 600 15px var(--font-mono); }
+.node .s { fill: var(--muted); font: 400 12.5px var(--font-sans); }
+.edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.edge.aux { stroke-dasharray: 4 4; }
+.bracket { fill: none; stroke: var(--signal); stroke-width: 1.5; }
+.bracket-label { fill: var(--signal); font: 500 13px var(--font-mono); }
+.node, .edge, .bracket, .bracket-label { transition: opacity 0.2s; }
+.dim { opacity: 0.18; }
+.lit.edge { stroke: var(--accent); stroke-width: 2.2; }
+.lit.node rect { stroke: var(--accent); }
+#arrow path { fill: var(--muted); }
+#arrow-lit path { fill: var(--accent); }
+
+/* Steps of the selected flow */
+.steps {
+  display: grid;
+  gap: 12px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.steps h3 { margin: 0; font: 600 15px var(--font-mono); color: var(--accent); }
+.steps ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 72ch; }
+.steps li::marker { color: var(--muted); font-family: var(--font-mono); font-size: 0.85em; }
+
+/* Trade timeline */
+.chart { overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.grid-line { stroke: var(--line); stroke-width: 1; }
+.lvl { stroke-width: 1.5; fill: none; }
+.lvl.target { stroke: var(--gain); }
+.lvl.entry { stroke: var(--accent); }
+.lvl.stop { stroke: var(--loss); }
+.lvl.ref { stroke: var(--muted); stroke-dasharray: 4 4; }
+.lbl { font: 500 12.5px var(--font-mono); }
+.lbl.target { fill: var(--gain); }
+.lbl.entry { fill: var(--accent); }
+.lbl.stop { fill: var(--loss); }
+.lbl.ref, .day { fill: var(--muted); }
+.day { font: 400 12.5px var(--font-mono); }
+.day.key { fill: var(--fg); font-weight: 500; }
+.wick { stroke: var(--fg); stroke-width: 1.2; }
+.body-up { fill: var(--fg); stroke: var(--fg); }
+.body-down { fill: var(--surface); stroke: var(--fg); stroke-width: 1.2; }
+.fill-dot.entry { fill: var(--accent); }
+.fill-dot.target { fill: var(--gain); }
+.ghost { fill: none; stroke: var(--line); stroke-dasharray: 3 3; }
+.note { fill: var(--muted); font: 400 12px var(--font-sans); }
+
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.facts span {
+  font: 500 13px var(--font-mono);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Invariants */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.rule { display: grid; gap: 6px; align-content: start; padding-top: 12px; border-top: 2px solid var(--fg); min-width: 0; }
+.rule h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.rule p { color: var(--muted); font-size: 15px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .node, .edge, .bracket, .bracket-label { transition: none; }
+}
+</style>
+
+</head>
+<body>
+<div class="page">
+  <header>
+    <span class="eyebrow">oracle · Go + Postgres</span>
+    <h1>Das cotações da B3 ao plano do dia</h1>
+    <p class="lead">Três comandos dividem o trabalho: <code>sync</code> traz o histórico para o banco, <code>recommend</code> monta o plano de amanhã e <code>backtest</code> testa a mesma regra no passado. Escolha um comando para ver o caminho dele.</p>
+  </header>
+
+  <section aria-labelledby="flow-title">
+    <h2 id="flow-title">Fluxo</h2>
+    <div class="picker" role="group" aria-label="Escolher comando">
+      <button type="button" id="pick-all" data-flow="all" aria-pressed="true">tudo</button>
+      <button type="button" id="pick-sync" data-flow="sync" aria-pressed="false">make sync</button>
+      <button type="button" id="pick-recommend" data-flow="recommend" aria-pressed="false">make recommend</button>
+      <button type="button" id="pick-backtest" data-flow="backtest" aria-pressed="false">make backtest</button>
+    </div>
+    <div class="diagram">
+      <svg id="flow" viewBox="0 0 960 840" role="img" aria-label="Diagrama do fluxo: B3, leitura dos arquivos, sync, Postgres, histórico, recommend e backtest usando internal/swing">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="arrow-lit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+      </svg>
+    </div>
+    <div class="steps" id="steps" aria-live="polite"></div>
+  </section>
+
+  <section aria-labelledby="trade-title">
+    <h2 id="trade-title">Uma operação, pregão a pregão</h2>
+    <p>Tudo é medido em ATR, a oscilação diária média dos últimos 14 pregões, a partir do fechamento do dia do sinal. O exemplo abaixo é ilustrativo.</p>
+    <div class="facts">
+      <span>acima da média de 200 dias</span>
+      <span>RSI(2) &lt; 10</span>
+      <span>volume mediano ≥ R$ 5 mi/dia</span>
+      <span>saída em até 5 pregões</span>
+    </div>
+    <div class="chart">
+      <svg viewBox="0 0 1000 270" role="img" aria-label="Exemplo de operação: sinal no fechamento do dia D, compra em D+1 a 0,5 ATR abaixo, venda no alvo em D+3">
+        <g id="trade"></g>
+      </svg>
+    </div>
+  </section>
+
+  <section aria-labelledby="rules-title">
+    <h2 id="rules-title">O que não pode quebrar</h2>
+    <div class="rules">
+      <div class="rule">
+        <h3>Sem olhar o futuro</h3>
+        <p>No backtest, cada decisão do dia D usa só o que se sabia no fechamento de D. O histórico de uma ação só conta operações que já terminaram até ali.</p>
+      </div>
+      <div class="rule">
+        <h3>Splits quebram a série</h3>
+        <p>Os preços não são ajustados. Uma variação de fechamento abaixo de 0,6× ou acima de 1/0,6× é tratada como desdobramento ou grupamento, e a série é cortada ali.</p>
+      </div>
+      <div class="rule">
+        <h3>Uma regra só</h3>
+        <p><code>recommend</code> e <code>backtest</code> chamam as mesmas funções de <code>internal/swing</code>. Mudou a regra, os dois mudam juntos, e o backtest continua medindo o plano real.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function text(parent, x, y, cls, str, anchor) {
+    var t = el("text", { x: x, y: y, class: cls, "text-anchor": anchor || "middle" }, parent);
+    t.textContent = str;
+    return t;
+  }
+
+  // ---- Flow diagram ----
+  var W = 220, H = 60;
+  var nodes = [
+    { id: "src",    x: 370, y: 20,  t: "B3 · COTAHIST",      s: "ZIPs anuais, mensais e diários", kind: "external", flows: ["sync"] },
+    { id: "b3",     x: 370, y: 120, t: "internal/b3",        s: "lê registros de 245 colunas",    flows: ["sync"] },
+    { id: "sync",   x: 370, y: 220, t: "quote.SyncHistory",  s: "uma transação por arquivo",      flows: ["sync"] },
+    { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest"] },
+    { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · conexão · Ctrl+C",      flows: ["sync", "recommend", "backtest"] },
+    { id: "api",    x: 90,  y: 330, t: "cmd/api",            s: "só /health por enquanto",        flows: [] },
+    { id: "hist",   x: 370, y: 440, t: "quote.History",      s: "só ações ON, PN e units",        flows: ["recommend", "backtest"] },
+    { id: "yahoo",  x: 110, y: 440, t: "Yahoo Finance",      s: "preço-alvo dos analistas",       kind: "external", flows: ["recommend"] },
+    { id: "rec",    x: 110, y: 550, t: "cmd/recommend",      s: "nível forte → tendência",        flows: ["recommend"] },
+    { id: "bt",     x: 630, y: 550, t: "internal/backtest",  s: "prepare → simulate",             flows: ["backtest"] },
+    { id: "swing",  x: 370, y: 660, t: "internal/swing",     s: "Signal · Levels · Simulate · Rank", kind: "shared", flows: ["recommend", "backtest"] },
+    { id: "plan",   x: 110, y: 760, t: "Plano do dia",       s: "compra até · venda · stop",      flows: ["recommend"] },
+    { id: "report", x: 630, y: 760, t: "Relatório + CSV",    s: "retorno, queda máx., Sharpe",    flows: ["backtest"] }
+  ];
+  var edges = [
+    { d: "M480 80 L480 118",                  flows: ["sync"] },
+    { d: "M480 180 L480 218",                 flows: ["sync"] },
+    { d: "M480 280 L480 328",                 flows: ["sync"] },
+    { d: "M480 390 L480 438",                 flows: ["recommend", "backtest"] },
+    { d: "M650 360 L592 360", aux: true,      flows: ["sync", "recommend", "backtest"] },
+    { d: "M310 360 L368 360", aux: true,      flows: [] },
+    { d: "M420 500 L420 580 L332 580",        flows: ["recommend"] },
+    { d: "M540 500 L540 580 L628 580",        flows: ["backtest"] },
+    { d: "M220 500 L220 548",                 flows: ["recommend"] },
+    { d: "M260 610 L260 690 L368 690",        flows: ["recommend"] },
+    { d: "M700 610 L700 690 L592 690",        flows: ["backtest"] },
+    { d: "M180 610 L180 758",                 flows: ["recommend"] },
+    { d: "M780 610 L780 758",                 flows: ["backtest"] }
+  ];
+
+  var svg = document.getElementById("flow");
+  var parts = [];
+
+  // make sync bracket around the ingestion column
+  var bracket = el("g", {}, svg);
+  el("path", { class: "bracket", d: "M610 24 L626 24 L626 276 L610 276" }, bracket);
+  text(bracket, 640, 155, "bracket-label", "make sync", "start");
+  parts.push({ g: bracket, flows: ["sync"], isEdge: false, noLit: true });
+
+  edges.forEach(function (e) {
+    var p = el("path", { class: "edge" + (e.aux ? " aux" : ""), d: e.d, "marker-end": "url(#arrow)" }, svg);
+    parts.push({ g: p, flows: e.flows, isEdge: true });
+  });
+  nodes.forEach(function (n) {
+    var g = el("g", { class: "node" + (n.kind ? " " + n.kind : "") }, svg);
+    el("rect", { x: n.x, y: n.y, width: W, height: H, rx: n.kind === "store" ? 16 : 6 }, g);
+    text(g, n.x + W / 2, n.y + 26, "t", n.t);
+    text(g, n.x + W / 2, n.y + 45, "s", n.s);
+    parts.push({ g: g, flows: n.flows, isEdge: false });
+  });
+
+  var steps = {
+    all: {
+      title: "Visão geral",
+      items: [
+        "<code>make sync</code> baixa os arquivos COTAHIST da B3 e grava as cotações no Postgres. Rode todo dia depois do fechamento.",
+        "<code>make recommend</code> lê os últimos 3 anos, procura sinais no último pregão e imprime o plano com quantidade, compra, alvo e stop.",
+        "<code>make backtest</code> roda a mesma regra pregão a pregão no passado, com um caixa só, e compara com o universo igual-peso.",
+        "Todo comando começa com <code>bootstrap.Start()</code>, que carrega o <code>.env</code>, conecta no banco e trata o Ctrl+C."
+      ]
+    },
+    sync: {
+      title: "make sync",
+      items: [
+        "<code>quote.SyncHistory</code> lista os arquivos desde <code>SINCE</code>: anuais até o ano passado, mensais do ano atual e diários do mês atual.",
+        "Pula os arquivos que já estão em <code>synced_files</code>. Por isso rodar de novo é rápido e seguro.",
+        "<code>b3.Client.Fetch</code> baixa o ZIP e lê cada linha de 245 colunas, ficando só com o lote padrão do mercado à vista.",
+        "Grava em lotes de 1.000 com <code>ON CONFLICT DO NOTHING</code> e registra o arquivo, tudo na mesma transação.",
+        "Arquivo que a B3 não publicou (feriado, fim de semana, pregão não fechado) é pulado sem erro."
+      ]
+    },
+    recommend: {
+      title: "make recommend",
+      items: [
+        "<code>quote.History</code> carrega 3 anos de ações ON, PN e units, e o comando avisa se o último pregão no banco está velho.",
+        "Só entram ações que negociaram no último pregão. <code>swing.Analyze</code> descarta as de volume mediano abaixo de R$ 5 mi, simula a regra no histórico e vê se há sinal hoje.",
+        "É elegível quem tem sinal hoje, pelo menos 5 operações no histórico e expectância positiva.",
+        "Para as elegíveis, busca o preço-alvo no Yahoo Finance. Alvo abaixo do preço atual descarta a ação. Se o Yahoo falhar, segue só com o histórico.",
+        "<code>swing.Rank</code> ordena por expectância e upside, e calcula a quantidade pelo capital dividido por <code>TOP</code> e pela perda máxima <code>RISK</code>.",
+        "Começa no nível forte. Com <code>FILL=1</code>, desce para médio, fraco e tendência até completar a lista."
+      ]
+    },
+    backtest: {
+      title: "make backtest",
+      items: [
+        "<code>quote.History</code> carrega o período do teste e mais <code>-warmup</code> anos antes, para os sinais terem histórico.",
+        "<code>prepare</code> corta as séries nos splits, monta o calendário de pregões, acha os sinais e simula o histórico de cada ação.",
+        "<code>simulate</code> percorre os pregões. Em cada um, <code>settle</code> fecha as posições que saíram, <code>worth</code> calcula o patrimônio, <code>rank</code> escolhe os candidatos e <code>buy</code> envia as ordens.",
+        "O <code>rank</code> só usa operações que já terminaram naquele dia, então nenhuma decisão enxerga o futuro.",
+        "<code>Summary</code> calcula retorno, queda máxima, Sharpe e o quadro anual. Com <code>CSV=</code>, cada operação vai para um arquivo."
+      ]
+    }
+  };
+
+  var stepsBox = document.getElementById("steps");
+  function show(flow) {
+    parts.forEach(function (p) {
+      var on = flow === "all" || p.flows.indexOf(flow) !== -1;
+      p.g.classList.toggle("dim", !on);
+      var lit = on && flow !== "all" && !p.noLit;
+      p.g.classList.toggle("lit", lit);
+      if (p.isEdge) p.g.setAttribute("marker-end", lit ? "url(#arrow-lit)" : "url(#arrow)");
+    });
+    document.querySelectorAll(".picker button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.flow === flow));
+    });
+    var s = steps[flow];
+    stepsBox.innerHTML = "<h3>" + s.title + "</h3><ol>" + s.items.map(function (i) { return "<li>" + i + "</li>"; }).join("") + "</ol>";
+  }
+  document.querySelectorAll(".picker button").forEach(function (b) {
+    b.addEventListener("click", function () { show(b.dataset.flow); });
+  });
+  show("all");
+
+  // ---- Trade timeline (values in ATR, relative to the close of day D) ----
+  var g = document.getElementById("trade");
+  function y(v) { return 120 - 40 * v; }
+  var days = [
+    { x: 120, label: "D-2", c: [1.6, 1.8, 1.0, 1.1] },
+    { x: 220, label: "D-1", c: [1.1, 1.2, 0.4, 0.5] },
+    { x: 320, label: "D",   c: [0.5, 0.6, -0.1, 0], key: true },
+    { x: 420, label: "D+1", c: [-0.1, 0.3, -0.7, 0.2], key: true },
+    { x: 520, label: "D+2", c: [0.2, 0.7, 0.0, 0.6] },
+    { x: 620, label: "D+3", c: [0.6, 1.2, 0.5, 1.0], key: true },
+    { x: 720, label: "D+4" },
+    { x: 820, label: "D+5" }
+  ];
+
+  el("line", { class: "grid-line", x1: 60, x2: 860, y1: 222, y2: 222 }, g);
+  var levels = [
+    { v: 1,    cls: "target", label: "alvo  +1 ATR" },
+    { v: 0,    cls: "ref",    label: "fechamento de D" },
+    { v: -0.5, cls: "entry",  label: "compra −0,5 ATR" },
+    { v: -2,   cls: "stop",   label: "stop  −2 ATR" }
+  ];
+  levels.forEach(function (l) {
+    el("line", { class: "lvl " + l.cls, x1: 290, x2: 860, y1: y(l.v), y2: y(l.v) }, g);
+    text(g, 868, y(l.v) + 4, "lbl " + l.cls, l.label, "start");
+  });
+
+  days.forEach(function (d) {
+    text(g, d.x, 244, "day" + (d.key ? " key" : ""), d.label);
+    if (!d.c) {
+      el("rect", { class: "ghost", x: d.x - 18, y: 70, width: 36, height: 120, rx: 3 }, g);
+      return;
+    }
+    var o = d.c[0], h = d.c[1], l = d.c[2], c = d.c[3];
+    el("line", { class: "wick", x1: d.x, x2: d.x, y1: y(h), y2: y(l) }, g);
+    var top = y(Math.max(o, c)), bottom = y(Math.min(o, c));
+    el("rect", { class: c >= o ? "body-up" : "body-down", x: d.x - 14, y: top, width: 28, height: Math.max(2, bottom - top), rx: 1.5 }, g);
+  });
+
+  el("circle", { class: "fill-dot entry", cx: 420, cy: y(-0.5), r: 6 }, g);
+  el("circle", { class: "fill-dot target", cx: 620, cy: y(1), r: 6 }, g);
+  text(g, 320, 22, "note", "sinal no fechamento");
+  text(g, 420, 186, "note", "mínima tocou a ordem: comprou");
+  text(g, 620, 50, "note", "máxima tocou o alvo: vendeu");
+  text(g, 770, 264, "note", "sem alvo nem stop: vende no fechamento de D+5");
+})();
+</script>
+</body>
+</html>

@@ -2,6 +2,8 @@
 
 B3 (Brazilian stock exchange) quote history stored in Postgres, plus a command that builds the day's trading plan from it.
 
+For a visual overview, open [`docs/flow.html`](docs/flow.html) in a browser. It shows the path of each command (`sync`, `recommend`, `backtest`), one trade session by session, and the rules the code must not break. The page is in Portuguese.
+
 ## Setup
 
 Requires Go 1.26 and Docker.
@@ -96,7 +98,10 @@ The binary also takes `-warmup`, `-lookback`, `-oversold` and `-min-volume`. The
 
 ## Project layout
 
+See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect.
+
 ```
+docs/          flow diagram (open flow.html in a browser)
 cmd/
   sync/        downloads quotes from B3
   recommend/   builds the day's plan
