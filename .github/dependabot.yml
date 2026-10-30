@@ -1,0 +1,23 @@
+# Dependabot version updates.
+# Security updates are turned on separately in Settings → Code security.
+# Docs: https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+version: 2
+
+updates:
+  # Go modules from go.mod (GORM, Postgres driver, godotenv and indirect dependencies).
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "America/Sao_Paulo"
+    groups:
+      # Minor and patch updates arrive together in one PR; majors keep their own PR.
+      go-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 5
