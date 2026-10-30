@@ -1,22 +1,19 @@
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"strconv"
 	"text/tabwriter"
 	"time"
 
-	"oracle/config"
 	"oracle/internal/backtest"
+	"oracle/internal/bootstrap"
 	"oracle/internal/quote"
 	"oracle/internal/swing"
-	"oracle/pkg/db"
 )
 
 func main() {
@@ -56,16 +53,10 @@ func main() {
 	params.CostPct = *cost
 	params.MinVolume = *minVolume
 
-	cfg := config.Load()
-	database, err := db.Connect(cfg.DB)
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
+	ctx, app := bootstrap.Start()
+	defer app.Close()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	history, err := quote.History(ctx, database, from.AddDate(-*warmup, 0, 0))
+	history, err := quote.History(ctx, app.DB, from.AddDate(-*warmup, 0, 0))
 	if err != nil {
 		log.Fatalf("failed to load history: %v", err)
 	}

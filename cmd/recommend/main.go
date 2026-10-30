@@ -7,16 +7,14 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"slices"
 	"text/tabwriter"
 	"time"
 
-	"oracle/config"
+	"oracle/internal/bootstrap"
 	"oracle/internal/quote"
 	"oracle/internal/swing"
 	"oracle/internal/yahoo"
-	"oracle/pkg/db"
 )
 
 type row struct {
@@ -53,15 +51,10 @@ func main() {
 	flag.BoolVar(&opts.fill, "fill", false, "complete the list with weaker signals")
 	flag.Parse()
 
-	database, err := db.Connect(config.Load().DB)
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
+	ctx, app := bootstrap.Start()
+	defer app.Close()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	history, err := quote.History(ctx, database, time.Now().AddDate(-opts.years, 0, 0))
+	history, err := quote.History(ctx, app.DB, time.Now().AddDate(-opts.years, 0, 0))
 	if err != nil {
 		log.Fatalf("failed to load history: %v", err)
 	}
