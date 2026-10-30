@@ -1,0 +1,257 @@
+# golangci-lint v2 configuration.
+# Run with `make lint` (or `make lint-fix` to apply automatic fixes).
+# Docs: https://golangci-lint.run/docs/configuration/
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+output:
+  sort-order:
+    - linter
+    - file
+  show-stats: true
+
+linters:
+  default: none
+  enable:
+    # Bugs and correctness
+    - asasalint # []any passed as a single variadic argument
+    - bidichk # dangerous unicode sequences
+    - bodyclose # HTTP response bodies are closed
+    - contextcheck # functions receive the caller's context
+    - copyloopvar # needless loop variable copies (Go 1.22+)
+    - durationcheck # multiplied durations
+    - errcheck # unchecked errors
+    - errchkjson # unchecked or unnecessary json encoding errors
+    - errorlint # error wrapping and comparison (errors.Is/As)
+    - exhaustive # switch over enums covers every case
+    - fatcontext # context growing inside loops
+    - gocheckcompilerdirectives # valid //go: directives
+    - gosec # security issues
+    - govet # go vet, with extra analyzers below
+    - ineffassign # assignments never used
+    - makezero # append to slices created with non-zero length
+    - musttag # structs passed to encoders have tags
+    - nilerr # returning nil after checking an error
+    - nilnesserr # returning an unrelated nil error
+    - nilnil # returning nil value and nil error together
+    - noctx # HTTP requests without a context
+    - reassign # reassigning package variables of other packages
+    - recvcheck # consistent value/pointer receivers
+    - rowserrcheck # sql.Rows.Err is checked
+    - sqlclosecheck # sql.Rows and statements are closed
+    - staticcheck # staticcheck, gosimple and stylecheck
+    - unused # unused code
+
+    # Simplicity and maintainability
+    - cyclop # cyclomatic complexity per function
+    - dupl # duplicated code blocks
+    - funlen # function length
+    - gocognit # cognitive complexity
+    - goconst # repeated strings that could be constants
+    - gocritic # broad set of diagnostics, style and performance checks
+    - maintidx # maintainability index
+    - nakedret # naked returns in long functions
+    - nestif # deeply nested ifs
+    - unconvert # unnecessary type conversions
+    - unparam # unused function parameters and results
+    - wastedassign # assignments overwritten before use
+
+    # Modern Go and standard library
+    - exptostd # golang.org/x/exp functions available in the stdlib
+    - intrange # for i := range n (Go 1.22+)
+    - modernize # newer language and library features
+    - perfsprint # faster alternatives to fmt.Sprintf
+    - prealloc # slices that can be preallocated
+    - usestdlibvars # stdlib constants instead of literals (http.MethodGet, ...)
+    - usetesting # t.Context, t.TempDir, t.Setenv in tests
+
+    # Style and readability
+    - asciicheck # non-ASCII identifiers
+    - dogsled # too many blank identifiers in assignments
+    - dupword # duplicated words in comments and strings
+    - errname # error types and sentinels are named Err...
+    - godot # comments end with a period
+    - goprintffuncname # printf-like functions end with f
+    - misspell # common English misspellings
+    - nolintlint # well-formed //nolint directives
+    - predeclared # shadowing predeclared identifiers (len, close, ...)
+    - revive # configurable golint replacement
+    - thelper # test helpers call t.Helper
+    - tparallel # inconsistent t.Parallel usage
+    - whitespace # leading and trailing blank lines
+
+    # Left out on purpose, too noisy for this codebase:
+    # depguard, err113, exhaustruct, forbidigo, gochecknoglobals, ireturn, lll, mnd,
+    # nlreturn, nonamedreturns, paralleltest, tagliatelle, testpackage, varnamelen,
+    # wrapcheck, wsl_v5.
+
+  settings:
+    cyclop:
+      max-complexity: 15
+      package-average: 0
+
+    dupl:
+      threshold: 150
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+
+    gocognit:
+      min-complexity: 20
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-string-values:
+        - "^-$"
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+        - experimental
+        - opinionated
+      disabled-checks:
+        - hugeParam # quote.Quote and similar are passed by value on purpose
+        - rangeValCopy
+        - unnamedResult
+        - whyNoLint # covered by nolintlint
+
+    godot:
+      scope: declarations
+      exclude:
+        - "^\\s*TODO"
+
+    gosec:
+      excludes:
+        - G104 # unchecked errors, already covered by errcheck
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # struct layout is chosen for readability
+        - shadow # `err` shadowing is idiomatic
+      settings:
+        printf:
+          funcs:
+            - (*log.Logger).Printf
+            - (*log.Logger).Fatalf
+
+    maintidx:
+      under: 20
+
+    misspell:
+      locale: US
+      mode: restricted # check comments only; user-facing strings are in Portuguese
+
+    nakedret:
+      max-func-lines: 0
+
+    nestif:
+      min-complexity: 5
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    perfsprint:
+      strconcat: false
+
+    revive:
+      enable-all-rules: false
+      rules:
+        - name: blank-imports
+        - name: bool-literal-in-expr
+        - name: constant-logical-expr
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: datarace
+        - name: deep-exit
+          exclude:
+            - "**/cmd/**"
+            - "**/internal/bootstrap/**"
+        - name: defer
+        - name: dot-imports
+        - name: duplicated-imports
+        - name: early-return
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: identical-branches
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: modifies-value-receiver
+        - name: range
+        - name: range-val-address
+        - name: range-val-in-closure
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: redundant-import-alias
+        - name: superfluous-else
+        - name: time-equal
+        - name: time-naming
+        - name: unconditional-recursion
+        - name: unexported-return
+        - name: unnecessary-stmt
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: unused-receiver
+        - name: use-any
+        - name: useless-break
+        - name: var-declaration
+        - name: var-naming
+        - name: waitgroup-by-value
+
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling # fmt.Print*, Close, os.Remove... without error checks
+    rules:
+      # Tests may repeat setup, use magic values and be long.
+      - path: _test\.go
+        linters:
+          - cyclop
+          - dupl
+          - dupword
+          - errcheck
+          - funlen
+          - gocognit
+          - goconst
+          - gosec
+          - maintidx
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+    goimports:
+      local-prefixes:
+        - oracle
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
