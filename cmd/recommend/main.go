@@ -25,6 +25,7 @@ type row struct {
 	strength string
 }
 
+// summary is how one signal level performed across the whole universe.
 type summary struct {
 	tier       swing.Tier
 	candidates int
@@ -33,18 +34,26 @@ type summary struct {
 	sum        float64
 }
 
+type options struct {
+	capital     float64
+	top         int
+	risk        float64
+	years       int
+	noEstimates bool
+	fill        bool
+}
+
 func main() {
-	capital := flag.Float64("capital", 500, "capital available in BRL")
-	top := flag.Int("top", 5, "number of stocks to recommend")
-	risk := flag.Float64("risk", 2, "max loss per trade as a percentage of capital")
-	years := flag.Int("years", 3, "years of history used in the backtest")
-	noEstimates := flag.Bool("no-estimates", false, "skip analyst estimates")
-	fill := flag.Bool("fill", false, "complete the list with weaker signals")
+	var opts options
+	flag.Float64Var(&opts.capital, "capital", 500, "capital available in BRL")
+	flag.IntVar(&opts.top, "top", 5, "number of stocks to recommend")
+	flag.Float64Var(&opts.risk, "risk", 2, "max loss per trade as a percentage of capital")
+	flag.IntVar(&opts.years, "years", 3, "years of history used in the backtest")
+	flag.BoolVar(&opts.noEstimates, "no-estimates", false, "skip analyst estimates")
+	flag.BoolVar(&opts.fill, "fill", false, "complete the list with weaker signals")
 	flag.Parse()
 
-	cfg := config.Load()
-
-	database, err := db.Connect(cfg.DB)
+	database, err := db.Connect(config.Load().DB)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
@@ -52,17 +61,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	history, err := quote.History(ctx, database, time.Now().AddDate(-*years, 0, 0))
+	history, err := quote.History(ctx, database, time.Now().AddDate(-opts.years, 0, 0))
 	if err != nil {
 		log.Fatalf("failed to load history: %v", err)
 	}
 
-	var latest time.Time
-	for _, bars := range history {
-		if day := bars[len(bars)-1].Date; day.After(latest) {
-			latest = day
-		}
-	}
+	latest := lastSession(history)
 	if latest.IsZero() {
 		log.Fatal("no quotes in the database, run `make sync` first")
 	}
@@ -71,56 +75,81 @@ func main() {
 	}
 
 	params := swing.DefaultParams()
-	estimates := newEstimates(ctx, !*noEstimates)
+	estimates := newEstimates(ctx, !opts.noEstimates)
+	rows, summaries := buildPlan(ctx, history, latest, params, estimates, opts)
+	report(rows, summaries, params, latest, opts)
+}
 
-	var (
-		rows      []row
-		summaries []summary
-		seen      = make(map[string]bool)
-	)
-	for _, t := range swing.Tiers {
-		params.Oversold = t.Oversold
-		s := summary{tier: t}
-
-		var (
-			analyses []swing.Analysis
-			eligible []string
-		)
-		for ticker, bars := range history {
-			if !bars[len(bars)-1].Date.Equal(latest) {
-				continue
-			}
-			a := swing.Analyze(ticker, bars, params)
-			s.trades += a.Trades
-			s.wins += a.Wins
-			s.sum += a.SumReturn
-			analyses = append(analyses, a)
-			if a.Eligible(params) {
-				eligible = append(eligible, ticker)
-			}
+func lastSession(history map[string][]quote.Quote) time.Time {
+	var latest time.Time
+	for _, bars := range history {
+		if day := bars[len(bars)-1].Date; day.After(latest) {
+			latest = day
 		}
-		slices.Sort(eligible)
+	}
+	return latest
+}
+
+// buildPlan tries the signal levels from strongest to weakest. It stops at the first level,
+// unless -fill is set and the list is still short.
+func buildPlan(ctx context.Context, history map[string][]quote.Quote, latest time.Time, params swing.Params, estimates *estimates, opts options) ([]row, []summary) {
+	var rows []row
+	var summaries []summary
+	taken := make(map[string]bool)
+
+	for _, tier := range swing.Tiers {
+		params.Oversold = tier.Oversold
+		analyses, s := analyzeTier(history, latest, params, tier)
+
+		eligible := eligibleTickers(analyses, params)
 		s.candidates = len(eligible)
 		summaries = append(summaries, s)
 
 		estimates.fetch(ctx, eligible)
-		for _, pick := range swing.Rank(analyses, estimates.byTicker, params, *capital, *risk, *top) {
-			if len(rows) == *top {
+		for _, pick := range swing.Rank(analyses, estimates.byTicker, params, opts.capital, opts.risk, opts.top) {
+			if len(rows) == opts.top {
 				break
 			}
-			if seen[pick.Ticker] {
+			if taken[pick.Ticker] {
 				continue
 			}
-			seen[pick.Ticker] = true
+			taken[pick.Ticker] = true
 			bars := history[pick.Ticker]
-			rows = append(rows, row{pick, bars[len(bars)-1].Name, t.Label})
+			rows = append(rows, row{pick, bars[len(bars)-1].Name, tier.Label})
 		}
-		if len(rows) == *top || !*fill {
+		if len(rows) == opts.top || !opts.fill {
 			break
 		}
 	}
+	return rows, summaries
+}
 
-	report(rows, summaries, params, latest, *capital, *risk, *top, *years)
+// analyzeTier runs the rule on every stock traded on the last session.
+func analyzeTier(history map[string][]quote.Quote, latest time.Time, params swing.Params, tier swing.Tier) ([]swing.Analysis, summary) {
+	s := summary{tier: tier}
+	var analyses []swing.Analysis
+	for ticker, bars := range history {
+		if !bars[len(bars)-1].Date.Equal(latest) {
+			continue
+		}
+		a := swing.Analyze(ticker, bars, params)
+		s.trades += a.Trades
+		s.wins += a.Wins
+		s.sum += a.SumReturn
+		analyses = append(analyses, a)
+	}
+	return analyses, s
+}
+
+func eligibleTickers(analyses []swing.Analysis, params swing.Params) []string {
+	var tickers []string
+	for _, a := range analyses {
+		if a.Eligible(params) {
+			tickers = append(tickers, a.Ticker)
+		}
+	}
+	slices.Sort(tickers)
+	return tickers
 }
 
 type estimates struct {
@@ -165,7 +194,8 @@ func (e *estimates) fetch(ctx context.Context, tickers []string) {
 	}
 }
 
-func report(rows []row, summaries []summary, params swing.Params, latest time.Time, capital, risk float64, top, years int) {
+func report(rows []row, summaries []summary, params swing.Params, latest time.Time, opts options) {
+	capital, risk, top, years := opts.capital, opts.risk, opts.top, opts.years
 	fmt.Printf("Plano de operações — base: pregão de %s\n", latest.Format("02/01/2006"))
 	fmt.Printf("Capital R$ %.2f | até R$ %.2f por ação | perda máxima R$ %.2f por operação\n\n",
 		capital, capital/float64(top), capital*risk/100)
