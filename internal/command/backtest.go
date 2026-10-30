@@ -1,4 +1,4 @@
-package main
+package command
 
 import (
 	"encoding/csv"
@@ -17,21 +17,23 @@ import (
 	"oracle/internal/swing"
 )
 
-func main() {
+// Backtest replays the strategy day by day on past data and prints the results.
+func Backtest(args []string) {
+	fs := flag.NewFlagSet("oracle backtest", flag.ExitOnError)
 	defaults := swing.DefaultParams()
 
-	capital := flag.Float64("capital", 500, "initial capital in BRL")
-	positions := flag.Int("top", 5, "maximum simultaneous positions")
-	risk := flag.Float64("risk", 2, "max loss per trade as a percentage of equity")
-	fromFlag := flag.String("from", "", "first day of the test, YYYY-MM-DD (default: 3 years ago)")
-	warmup := flag.Int("warmup", 4, "years of history before the start, used for signals and per-ticker track records")
-	lookback := flag.Int("lookback", 3, "years of closed trades used to rate a ticker, 0 for all")
-	rankFlag := flag.String("rank", "expectancy", "ranking: expectancy (per-ticker track record, as recommend) or rsi (no per-ticker selection)")
-	oversold := flag.Float64("oversold", defaults.Oversold, "RSI(2) threshold of the signal")
-	cost := flag.Float64("cost", defaults.CostPct, "cost per side, in % of the trade")
-	minVolume := flag.Float64("min-volume", defaults.MinVolume, "minimum median daily volume in BRL")
-	tradesFile := flag.String("csv", "", "write every executed trade to this CSV file")
-	flag.Parse()
+	capital := fs.Float64("capital", 500, "initial capital in BRL")
+	positions := fs.Int("top", 5, "maximum simultaneous positions")
+	risk := fs.Float64("risk", 2, "max loss per trade as a percentage of equity")
+	fromFlag := fs.String("from", "", "first day of the test, YYYY-MM-DD (default: 3 years ago)")
+	warmup := fs.Int("warmup", 4, "years of history before the start, used for signals and per-ticker track records")
+	lookback := fs.Int("lookback", 3, "years of closed trades used to rate a ticker, 0 for all")
+	rankFlag := fs.String("rank", "expectancy", "ranking: expectancy (per-ticker track record, as recommend) or rsi (no per-ticker selection)")
+	oversold := fs.Float64("oversold", defaults.Oversold, "RSI(2) threshold of the signal")
+	cost := fs.Float64("cost", defaults.CostPct, "cost per side, in % of the trade")
+	minVolume := fs.Float64("min-volume", defaults.MinVolume, "minimum median daily volume in BRL")
+	tradesFile := fs.String("csv", "", "write every executed trade to this CSV file")
+	_ = fs.Parse(args) // ExitOnError: a bad flag prints the usage and exits
 
 	from := time.Now().AddDate(-3, 0, 0)
 	if *fromFlag != "" {
@@ -75,7 +77,7 @@ func main() {
 		app.Fatalf("backtest failed: %v", err)
 	}
 
-	report(result, params, *positions, *risk, *rankFlag)
+	printBacktest(result, params, *positions, *risk, *rankFlag)
 
 	if *tradesFile != "" {
 		if err := writeTrades(*tradesFile, result.Trades); err != nil {
@@ -85,7 +87,7 @@ func main() {
 	}
 }
 
-func report(r backtest.Result, p swing.Params, positions int, risk float64, rank string) {
+func printBacktest(r backtest.Result, p swing.Params, positions int, risk float64, rank string) {
 	if len(r.Days) == 0 {
 		fmt.Println("Sem pregões no período.")
 		return

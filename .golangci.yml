@@ -184,6 +184,7 @@ linters:
         - name: deep-exit
           exclude:
             - "**/cmd/**"
+            - "**/internal/command/**"
             - "**/internal/bootstrap/**"
         - name: defer
         - name: dot-imports

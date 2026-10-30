@@ -6,7 +6,7 @@ For a visual overview, open [`docs/flow.html`](docs/flow.html) in a browser. It 
 
 ## Setup
 
-Requires Go 1.26 and Docker.
+Requires Go 1.27.3 and Docker.
 
 ```
 docker compose up -d
@@ -102,12 +102,9 @@ See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect
 
 ```
 docs/          flow diagram (open flow.html in a browser)
-cmd/
-  sync/        downloads quotes from B3
-  recommend/   builds the day's plan
-  backtest/    simulates the strategy on past data
-  api/         HTTP server (only /health for now)
+cmd/oracle/    the single binary; the first argument picks the command
 internal/
+  command/     one function per command: Sync, Recommend, Backtest, API
   bootstrap/   startup shared by every command
   b3/          COTAHIST file reader
   quote/       quote model, sync and history loading
@@ -117,6 +114,19 @@ internal/
 config/        reads .env
 pkg/db/        Postgres connection
 ```
+
+The project builds one binary, `oracle`, and the first argument picks the command:
+
+```
+go build -o oracle ./cmd/oracle
+./oracle sync -since 2020
+./oracle recommend -capital 2000
+./oracle backtest -from 2019-01-01
+./oracle api
+./oracle recommend -h    # flags of a command
+```
+
+The `make` targets call the same binary through `go run ./cmd/oracle <command>`. To add a command, write a `func Name(args []string)` in `internal/command` and register it in the map in `cmd/oracle/main.go`.
 
 Every command starts the same way:
 
@@ -128,6 +138,17 @@ defer app.Close()
 `Start` loads the configuration, connects to the database and returns a context that is canceled on Ctrl+C. From there the command uses `app.DB` and `app.Config`.
 
 To change the strategy, go to `internal/swing`. `recommend` and `backtest` share the same signal and simulation functions, so a change to one applies to the other.
+
+## Docker
+
+```
+make docker-build
+docker run --rm --env-file .env oracle sync
+docker run --rm --env-file .env oracle recommend -capital 2000
+docker run --rm --env-file .env -p 8080:8080 oracle    # api, the default
+```
+
+The image is built for `linux/arm64` and holds only the `oracle` binary. Inside a container `localhost` is the container itself, so point `DB_HOST` at the database host (for example `postgres` when running next to the compose service).
 
 ## Tests
 

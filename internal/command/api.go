@@ -1,4 +1,4 @@
-package main
+package command
 
 import (
 	"log"
@@ -9,7 +9,8 @@ import (
 	"oracle/internal/handler"
 )
 
-func main() {
+// API starts the HTTP server.
+func API(_ []string) {
 	_, app := bootstrap.Start()
 	defer app.Close()
 	log.Println("database connected")

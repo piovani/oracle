@@ -1,4 +1,4 @@
-package main
+package command
 
 import (
 	"context"
@@ -41,15 +41,17 @@ type options struct {
 	fill        bool
 }
 
-func main() {
+// Recommend prints the trading plan for the next session.
+func Recommend(args []string) {
+	fs := flag.NewFlagSet("oracle recommend", flag.ExitOnError)
 	var opts options
-	flag.Float64Var(&opts.capital, "capital", 500, "capital available in BRL")
-	flag.IntVar(&opts.top, "top", 5, "number of stocks to recommend")
-	flag.Float64Var(&opts.risk, "risk", 2, "max loss per trade as a percentage of capital")
-	flag.IntVar(&opts.years, "years", 3, "years of history used in the backtest")
-	flag.BoolVar(&opts.noEstimates, "no-estimates", false, "skip analyst estimates")
-	flag.BoolVar(&opts.fill, "fill", false, "complete the list with weaker signals")
-	flag.Parse()
+	fs.Float64Var(&opts.capital, "capital", 500, "capital available in BRL")
+	fs.IntVar(&opts.top, "top", 5, "number of stocks to recommend")
+	fs.Float64Var(&opts.risk, "risk", 2, "max loss per trade as a percentage of capital")
+	fs.IntVar(&opts.years, "years", 3, "years of history used in the backtest")
+	fs.BoolVar(&opts.noEstimates, "no-estimates", false, "skip analyst estimates")
+	fs.BoolVar(&opts.fill, "fill", false, "complete the list with weaker signals")
+	_ = fs.Parse(args) // ExitOnError: a bad flag prints the usage and exits
 
 	ctx, app := bootstrap.Start()
 	defer app.Close()
@@ -70,7 +72,7 @@ func main() {
 	params := swing.DefaultParams()
 	estimates := newEstimates(ctx, !opts.noEstimates)
 	rows, summaries := buildPlan(ctx, history, latest, params, estimates, opts)
-	report(rows, summaries, params, latest, opts)
+	printPlan(rows, summaries, params, latest, opts)
 }
 
 func lastSession(history map[string][]quote.Quote) time.Time {
@@ -187,7 +189,7 @@ func (e *estimates) fetch(ctx context.Context, tickers []string) {
 	}
 }
 
-func report(rows []row, summaries []summary, params swing.Params, latest time.Time, opts options) {
+func printPlan(rows []row, summaries []summary, params swing.Params, latest time.Time, opts options) {
 	capital, risk, top, years := opts.capital, opts.risk, opts.top, opts.years
 	fmt.Printf("Plano de operações — base: pregão de %s\n", latest.Format("02/01/2006"))
 	fmt.Printf("Capital R$ %.2f | até R$ %.2f por ação | perda máxima R$ %.2f por operação\n\n",
