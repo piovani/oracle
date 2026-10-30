@@ -17,7 +17,7 @@ func main() {
 	defer app.Close()
 
 	if err := quote.SyncHistory(ctx, app.DB, b3.NewClient(), *since); err != nil {
-		log.Fatalf("sync failed: %v", err)
+		app.Fatalf("sync failed: %v", err)
 	}
 	log.Println("quote history is up to date")
 }

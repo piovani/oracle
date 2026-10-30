@@ -147,12 +147,12 @@ type Levels struct {
 
 func (p Params) Levels(bars []quote.Quote, i int) Levels {
 	volatility := atr(bars, i)
-	close := bars[i].Close
+	last := bars[i].Close
 	return Levels{
-		Close:    close,
-		MaxEntry: round(close - p.EntryATR*volatility),
-		Target:   round(close + p.TargetATR*volatility),
-		Stop:     round(close - p.StopATR*volatility),
+		Close:    last,
+		MaxEntry: round(last - p.EntryATR*volatility),
+		Target:   round(last + p.TargetATR*volatility),
+		Stop:     round(last - p.StopATR*volatility),
 	}
 }
 

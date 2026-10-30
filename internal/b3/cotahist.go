@@ -71,7 +71,7 @@ func NewClient() *Client {
 // Fetch downloads the given COTAHIST file and calls fn for every stock quote
 // in it. It returns ErrNotFound when the file does not exist.
 func (c *Client) Fetch(ctx context.Context, file string, fn func(Quote) error) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/"+file, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/"+file, http.NoBody)
 	if err != nil {
 		return err
 	}

@@ -33,10 +33,17 @@ func Start() (context.Context, *App) {
 	return ctx, &App{Config: cfg, DB: database, stop: stop}
 }
 
+// Fatalf releases the resources and exits, like log.Fatalf.
+// Commands use it instead of log.Fatalf, which would skip the deferred Close.
+func (a *App) Fatalf(format string, args ...any) {
+	a.Close()
+	log.Fatalf(format, args...)
+}
+
 // Close releases the database connection and the Ctrl+C handler.
 func (a *App) Close() {
 	a.stop()
 	if sqlDB, err := a.DB.DB(); err == nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 	}
 }

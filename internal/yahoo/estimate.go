@@ -98,7 +98,7 @@ func (c *Client) Estimate(ctx context.Context, ticker string) (Estimate, error) 
 }
 
 func (c *Client) get(ctx context.Context, endpoint string) (int, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return 0, nil, err
 	}

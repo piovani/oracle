@@ -12,6 +12,8 @@ make backtest  [FROM=YYYY-MM-DD CAPITAL= TOP= RISK= COST= RANK=expectancy|rsi CS
 
 go build ./...
 go vet ./...
+make lint                     # golangci-lint v2, config in .golangci.yml; must report 0 issues
+make lint-fix
 go test ./...
 go test ./internal/swing -run TestName -v   # single test
 ```
@@ -26,6 +28,8 @@ Go module `oracle`. Four binaries in `cmd/` (`sync`, `recommend`, `backtest`, `a
 ctx, app := bootstrap.Start()   // config from .env, DB connection, Ctrl+C context; exits on failure
 defer app.Close()
 ```
+
+After `Start`, exit with `app.Fatalf` instead of `log.Fatalf`, so the deferred `Close` isn't skipped (`gocritic` flags it).
 
 Data flow:
 

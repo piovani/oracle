@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"text/tabwriter"
 	"time"
@@ -58,7 +59,7 @@ func main() {
 
 	history, err := quote.History(ctx, app.DB, from.AddDate(-*warmup, 0, 0))
 	if err != nil {
-		log.Fatalf("failed to load history: %v", err)
+		app.Fatalf("failed to load history: %v", err)
 	}
 
 	result, err := backtest.Run(history, backtest.Config{
@@ -71,14 +72,14 @@ func main() {
 		Rank:      rank,
 	})
 	if err != nil {
-		log.Fatalf("backtest failed: %v", err)
+		app.Fatalf("backtest failed: %v", err)
 	}
 
 	report(result, params, *positions, *risk, *rankFlag)
 
 	if *tradesFile != "" {
 		if err := writeTrades(*tradesFile, result.Trades); err != nil {
-			log.Fatalf("failed to write trades: %v", err)
+			app.Fatalf("failed to write trades: %v", err)
 		}
 		fmt.Printf("\n%d operações gravadas em %s\n", len(result.Trades), *tradesFile)
 	}
@@ -125,21 +126,24 @@ func report(r backtest.Result, p swing.Params, positions int, risk float64, rank
 }
 
 func writeTrades(path string, trades []backtest.Executed) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	w.Write([]string{"ticker", "signal", "entry", "exit", "qty", "entry_price", "exit_price", "return", "pnl"})
+	rows := make([][]string, 0, 1+len(trades))
+	rows = append(rows, []string{"ticker", "signal", "entry", "exit", "qty", "entry_price", "exit_price", "return", "pnl"})
 	for _, t := range trades {
-		w.Write([]string{
+		rows = append(rows, []string{
 			t.Ticker, t.Signal.Format("2006-01-02"), t.Entry.Format("2006-01-02"), t.Exit.Format("2006-01-02"),
 			strconv.Itoa(t.Qty), fmt.Sprintf("%.2f", t.EntryPrice), fmt.Sprintf("%.2f", t.ExitPrice),
 			fmt.Sprintf("%.6f", t.Return), fmt.Sprintf("%.2f", t.PnL),
 		})
 	}
-	w.Flush()
-	return w.Error()
+
+	// The path comes from the -csv flag, typed by whoever runs the command.
+	f, err := os.Create(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	if err := csv.NewWriter(f).WriteAll(rows); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }

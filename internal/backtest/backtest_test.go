@@ -20,7 +20,7 @@ func uptrend(ticker string, last ...quote.Quote) []quote.Quote {
 		b.Volume = 1e8
 		bars = append(bars, b)
 	}
-	for i := 0; i < 250; i++ {
+	for i := range 250 {
 		c := 10 + 0.04*float64(i)
 		add(quote.Quote{Open: c - 0.02, High: c + 0.1, Low: c - 0.1, Close: c})
 	}
@@ -28,7 +28,7 @@ func uptrend(ticker string, last ...quote.Quote) []quote.Quote {
 		add(b)
 	}
 	c := bars[len(bars)-1].Close
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		add(quote.Quote{Open: c, High: c + 0.1, Low: c - 0.1, Close: c})
 	}
 	return bars

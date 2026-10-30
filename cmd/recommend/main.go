@@ -56,12 +56,12 @@ func main() {
 
 	history, err := quote.History(ctx, app.DB, time.Now().AddDate(-opts.years, 0, 0))
 	if err != nil {
-		log.Fatalf("failed to load history: %v", err)
+		app.Fatalf("failed to load history: %v", err)
 	}
 
 	latest := lastSession(history)
 	if latest.IsZero() {
-		log.Fatal("no quotes in the database, run `make sync` first")
+		app.Fatalf("no quotes in the database, run `make sync` first")
 	}
 	if time.Since(latest) > 4*24*time.Hour {
 		log.Printf("last session in the database is %s, run `make sync` to update", latest.Format("02/01/2006"))

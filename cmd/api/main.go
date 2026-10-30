@@ -1,9 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
+	"time"
+
 	"oracle/internal/bootstrap"
 	"oracle/internal/handler"
 )
@@ -16,9 +17,16 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.Health)
 
-	addr := fmt.Sprintf(":%s", app.Config.Port)
-	log.Printf("server listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server error: %v", err)
+	server := &http.Server{
+		Addr:              ":" + app.Config.Port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	log.Printf("server listening on %s", server.Addr)
+	if err := server.ListenAndServe(); err != nil {
+		app.Fatalf("server error: %v", err)
 	}
 }
