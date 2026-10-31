@@ -28,34 +28,39 @@ type Estimate struct {
 }
 
 type Client struct {
-	HTTP  *http.Client
-	crumb string
+	HTTP    *http.Client
+	BaseURL string
+	crumb   string
 }
 
 func NewClient(ctx context.Context) (*Client, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
+	jar, _ := cookiejar.New(nil) // only fails on invalid options
+	c := &Client{HTTP: &http.Client{Timeout: 20 * time.Second, Jar: jar}, BaseURL: baseURL}
+	if err := c.connect(ctx, cookieURL); err != nil {
 		return nil, err
 	}
-	c := &Client{HTTP: &http.Client{Timeout: 20 * time.Second, Jar: jar}}
+	return c, nil
+}
 
+// connect gets the session cookie and the crumb that every API call needs.
+func (c *Client) connect(ctx context.Context, cookieURL string) error {
 	if _, _, err := c.get(ctx, cookieURL); err != nil {
-		return nil, err
+		return err
 	}
-	status, body, err := c.get(ctx, baseURL+"/v1/test/getcrumb")
+	status, body, err := c.get(ctx, c.BaseURL+"/v1/test/getcrumb")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("yahoo: crumb: unexpected status %d", status)
+		return fmt.Errorf("yahoo: crumb: unexpected status %d", status)
 	}
 	c.crumb = strings.TrimSpace(string(body))
-	return c, nil
+	return nil
 }
 
 func (c *Client) Estimate(ctx context.Context, ticker string) (Estimate, error) {
 	endpoint := fmt.Sprintf("%s/v10/finance/quoteSummary/%s.SA?modules=financialData&crumb=%s",
-		baseURL, url.PathEscape(ticker), url.QueryEscape(c.crumb))
+		c.BaseURL, url.PathEscape(ticker), url.QueryEscape(c.crumb))
 
 	status, body, err := c.get(ctx, endpoint)
 	if err != nil {

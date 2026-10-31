@@ -123,8 +123,11 @@ func syncFile(ctx context.Context, db *gorm.DB, client *b3.Client, file string) 
 	return total, nil
 }
 
+// now is the clock, replaced in tests.
+var now = time.Now
+
 func today() time.Time {
-	now := time.Now()
+	now := now()
 	if loc, err := time.LoadLocation("America/Sao_Paulo"); err == nil {
 		now = now.In(loc)
 	}
