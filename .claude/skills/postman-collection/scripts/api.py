@@ -32,6 +32,7 @@ import urllib.request
 
 COLLECTION = "docs/postman-collection.json"
 ROUTES_FILE = "internal/command/api.go"
+UNDOCUMENTED = ("/swagger/",)
 TEST_DB = {
     "DB_HOST": "localhost", "DB_PORT": "5433", "DB_USER": "oracle_test",
     "DB_PASSWORD": "oracle_test", "DB_NAME": "oracle_test", "DB_SSLMODE": "disable",
@@ -53,6 +54,8 @@ def routes():
     for pattern in re.findall(r'\.Handle(?:Func)?\(\s*"([^"]+)"', src):
         parts = pattern.split(" ", 1)
         method, path = (parts[0], parts[1]) if len(parts) == 2 else ("ANY", parts[0])
+        if path.startswith(UNDOCUMENTED):
+            continue
         found.add((method, re.sub(r"\{(\w+)(\.\.\.)?\}", r":\1", path)))
     return found
 

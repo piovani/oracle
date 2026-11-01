@@ -249,6 +249,54 @@ func TestCLIFailures(t *testing.T) {
 
 func TestCLIAPIHealth(t *testing.T) {
 	t.Parallel()
+	resp := get(t, startAPI(t)+"/health")
+	defer resp.Body.Close()
+
+	var body struct {
+		Status string `json:"status"`
+		Time   string `json:"time"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" || body.Status != "ok" {
+		t.Errorf("got %d %q %+v", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	}
+	if ts, err := time.Parse(time.RFC3339, body.Time); err != nil || time.Since(ts) > time.Minute {
+		t.Errorf("time %q is not the current RFC 3339 time", body.Time)
+	}
+}
+
+func TestCLIAPISwagger(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+
+	ui := get(t, base+"/swagger/index.html")
+	defer ui.Body.Close()
+	if ui.StatusCode != http.StatusOK || !strings.HasPrefix(ui.Header.Get("Content-Type"), "text/html") {
+		t.Errorf("swagger ui: got %d %q", ui.StatusCode, ui.Header.Get("Content-Type"))
+	}
+
+	doc := get(t, base+"/swagger/doc.json")
+	defer doc.Body.Close()
+	var spec struct {
+		Info struct {
+			Title string `json:"title"`
+		} `json:"info"`
+		Paths map[string]map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.NewDecoder(doc.Body).Decode(&spec); err != nil {
+		t.Fatalf("swagger doc.json: %v", err)
+	}
+	if doc.StatusCode != http.StatusOK || spec.Info.Title != "oracle API" || spec.Paths["/health"]["get"] == nil {
+		t.Errorf("swagger doc.json: got %d, title %q, paths %v", doc.StatusCode, spec.Info.Title, spec.Paths)
+	}
+}
+
+// startAPI runs `oracle api` on a free port against a new database and returns its base URL
+// once it answers /health. The server is killed at the end of the test.
+func startAPI(t *testing.T) string {
+	t.Helper()
 	_, cfg := newDatabase(t)
 	port := freePort(t)
 
@@ -266,38 +314,36 @@ func TestCLIAPIHealth(t *testing.T) {
 		_ = cmd.Wait()
 	})
 
-	url := fmt.Sprintf("http://127.0.0.1:%d/health", port)
-	var resp *http.Response
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", http.NoBody)
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp, err = http.DefaultClient.Do(req)
+		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
-			break
+			resp.Body.Close()
+			return base
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("api did not start: %v\n%s", err, stderr.String())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	defer resp.Body.Close()
+}
 
-	var body struct {
-		Status string `json:"status"`
-		Time   string `json:"time"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+func get(t *testing.T, url string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" || body.Status != "ok" {
-		t.Errorf("got %d %q %+v", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if ts, err := time.Parse(time.RFC3339, body.Time); err != nil || time.Since(ts) > time.Minute {
-		t.Errorf("time %q is not the current RFC 3339 time", body.Time)
-	}
+	return resp
 }
 
 func freePort(t *testing.T) int {

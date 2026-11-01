@@ -19,6 +19,11 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.15.0 # same as local; .golangci.yml also lints test/integration
+      - name: swagger is up to date
+        run: |
+          make swagger
+          changed=$(git status --porcelain -- docs/ internal/)
+          test -z "$changed" || { echo "$changed"; echo "::error::run make swagger and commit the result"; exit 1; }
 
   unit:
     runs-on: ubuntu-latest

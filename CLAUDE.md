@@ -12,6 +12,7 @@ make backtest  [FROM=YYYY-MM-DD CAPITAL= TOP= RISK= COST= RANK=expectancy|rsi CS
 
 go build ./...
 go vet ./...
+make swagger                  # regenerate the OpenAPI spec in docs/ from the swag annotations
 make lint                     # golangci-lint v2, config in .golangci.yml; must report 0 issues
 make lint-fix
 go test ./...
@@ -48,6 +49,6 @@ Invariants to preserve when changing strategy or backtest code:
 - **Splits.** Prices are not adjusted. A day-over-day close ratio outside 0.6–1/0.6 is treated as a split: `swing.Segments` breaks the series (backtest) and `continuous` keeps only the part after the last split (recommend).
 - **Shared logic.** `recommend` and `backtest` must keep calling the same `swing` functions, so backtest results stay representative of the live plan.
 
-The HTTP API (`oracle api`, routes in `internal/command/api.go`) is documented by the Postman collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
+The HTTP API (`oracle api`, routes in `internal/command/api.go`) is documented twice. Swagger: swag annotations (general info on `API`, one block per handler in `internal/handler`) generate `docs/docs.go`, `docs/swagger.json` and `docs/swagger.yaml` with `make swagger` (never edit them by hand; CI fails if they are stale), served at `/swagger/index.html`. Postman: the collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
 
 User-facing output (reports, column names, tier labels `forte`/`médio`/`fraco`/`tendência`) is in Portuguese; code, comments and README are in English.

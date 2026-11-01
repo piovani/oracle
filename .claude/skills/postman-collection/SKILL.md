@@ -38,6 +38,11 @@ machine `curl -X` gets `400 Bad Request` from the server even when the API is fi
    report it as validation.
 5. If a route is new, mention it in the "HTTP API" section of `README.md`.
 
+The Swagger spec (`docs/swagger.*`, served at `/swagger/`) documents the same routes and is
+generated from swag annotations on the handlers with `make swagger`. When a route changes,
+update its annotations and regenerate too, so the two documents agree; `/swagger/` itself is
+not an API route and is not in the collection (`check` skips it).
+
 ## Conventions
 
 - `info.schema` is `https://schema.getpostman.com/json/collection/v2.1.0/collection.json`;

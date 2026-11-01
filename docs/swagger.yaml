@@ -1,0 +1,44 @@
+basePath: /
+definitions:
+  HealthResponse:
+    properties:
+      status:
+        description: always "ok"
+        example: ok
+        type: string
+      time:
+        description: current server time, UTC, RFC 3339
+        example: "2026-11-01T22:07:11Z"
+        type: string
+    type: object
+info:
+  contact: {}
+  description: |-
+    HTTP API of the oracle, started with `oracle api`.
+    The server listens on `PORT` (default 8080) and connects to Postgres before it starts listening: if the database is unreachable, the process exits and nothing answers.
+    There is no authentication. Routes that don't exist answer 404, and known routes called with the wrong method answer 405 with an `Allow` header, both in plain text.
+  title: oracle API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: |-
+        Reports that the server is up, with the current server time in UTC (RFC 3339).
+        The database connection is checked once at startup, not on every call, so a 200 means the process is running and was able to connect when it started.
+        No side effects; safe to call repeatedly, for example from a load balancer or monitor.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/HealthResponse'
+        "405":
+          description: 'Method Not Allowed: only GET and HEAD are accepted (Allow:
+            GET, HEAD)'
+          schema:
+            type: string
+      summary: Health check
+      tags:
+      - health
+swagger: "2.0"

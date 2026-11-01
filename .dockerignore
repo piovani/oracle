@@ -2,6 +2,7 @@
 .github
 .env
 .DS_Store
-docs
+docs/*
+!docs/docs.go
 *.csv
 *.md
