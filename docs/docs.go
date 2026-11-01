@@ -41,6 +41,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/recommendations": {
+            "get": {
+                "description": "The plan of oracle recommend for the session after the latest one: which stocks to buy, how many and at what prices, ranked by track record and analyst upside.\nTiers are tried from strongest to weakest: the plan stops at the first unless fill is true. Analyst targets come from Yahoo Finance, an unofficial API: when it fails the plan ranks by history only (analyst_estimates is false), and targets that take too long are left for a later call.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Get the trading plan",
+                "parameters": [
+                    {
+                        "minimum": 0,
+                        "type": "number",
+                        "description": "Capital in BRL (default 500)",
+                        "name": "capital",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Stocks in the plan (default 5, at most 50)",
+                        "name": "top",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number",
+                        "description": "Max loss per trade, percent of capital (default 2, at most 100)",
+                        "name": "risk",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Go down the tiers until the plan is full (default false)",
+                        "name": "fill",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 30,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Years of history (default 3, at most 30)",
+                        "name": "years",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Use analyst targets (default true)",
+                        "name": "estimates",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Plan"
+                        }
+                    },
+                    "400": {
+                        "description": "an option is out of range or not a number/boolean",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no stock quotes stored in the period",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/recommendations/tiers": {
+            "get": {
+                "description": "How each tier did over the history of every stock traded on the latest session, before any selection, and how many stocks are candidates today: the table under the plan of oracle recommend, for every tier.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Summarize the tiers",
+                "parameters": [
+                    {
+                        "maximum": 30,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Years of history (default 3, at most 30)",
+                        "name": "years",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/TierSummaries"
+                        }
+                    },
+                    "400": {
+                        "description": "years out of range",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no stock quotes stored in the period",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
         "/sessions/latest": {
             "get": {
                 "description": "The last day with quotes in the database, and whether it is stale: older than 4 days, which means a sync is missing.",
@@ -372,6 +503,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/tickers/{ticker}/estimate": {
+            "get": {
+                "description": "The consensus price target and rating from Yahoo Finance, and the upside from the latest close. Targets are cached for the latest session.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plan"
+                ],
+                "summary": "Get the analyst target of a ticker",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "PETR4",
+                        "description": "B3 ticker",
+                        "name": "ticker",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/TickerEstimate"
+                        }
+                    },
+                    "404": {
+                        "description": "no quotes for the ticker, or no analyst coverage",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "503": {
+                        "description": "Yahoo Finance is unavailable or too slow; try again later",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
         "/tickers/{ticker}/quotes": {
             "get": {
                 "description": "Daily quotes of one ticker, in date order. Prices are as traded, not adjusted for splits or dividends.\nWithout from and to, the whole history is returned. A range without sessions answers an empty list.",
@@ -580,6 +759,26 @@ const docTemplate = `{
                 }
             }
         },
+        "AnalystEstimate": {
+            "type": "object",
+            "properties": {
+                "analysts": {
+                    "description": "analysts behind the target",
+                    "type": "integer",
+                    "example": 12
+                },
+                "rating": {
+                    "description": "consensus from 1 (strong buy) to 5 (sell), null when Yahoo has none",
+                    "type": "number",
+                    "example": 2.1
+                },
+                "target": {
+                    "description": "consensus price target, BRL",
+                    "type": "number",
+                    "example": 44.5
+                }
+            }
+        },
         "Error": {
             "type": "object",
             "properties": {
@@ -626,6 +825,164 @@ const docTemplate = `{
                     "description": "BRL",
                     "type": "number",
                     "example": 39.18
+                }
+            }
+        },
+        "Pick": {
+            "type": "object",
+            "properties": {
+                "avg_return": {
+                    "description": "per trade, net of costs (0.01 = 1%)",
+                    "type": "number",
+                    "example": 0.0123
+                },
+                "estimate": {
+                    "description": "analyst target, null without coverage or estimates",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/AnalystEstimate"
+                        }
+                    ]
+                },
+                "expectancy": {
+                    "description": "what the ranking uses",
+                    "type": "number",
+                    "example": 0.0067
+                },
+                "gain": {
+                    "description": "at the target, BRL",
+                    "type": "number",
+                    "example": 2.94
+                },
+                "invested": {
+                    "description": "qty × max_entry, BRL",
+                    "type": "number",
+                    "example": 75.42
+                },
+                "loss": {
+                    "description": "at the stop, BRL",
+                    "type": "number",
+                    "example": 2.94
+                },
+                "max_entry": {
+                    "description": "limit buy price, BRL",
+                    "type": "number",
+                    "example": 37.71
+                },
+                "name": {
+                    "type": "string",
+                    "example": "PETROBRAS"
+                },
+                "qty": {
+                    "description": "shares to buy, in the odd-lot market",
+                    "type": "integer",
+                    "example": 2
+                },
+                "stop": {
+                    "description": "stop, BRL",
+                    "type": "number",
+                    "example": 36.24
+                },
+                "target": {
+                    "description": "sell order, BRL",
+                    "type": "number",
+                    "example": 39.18
+                },
+                "ticker": {
+                    "type": "string",
+                    "example": "PETR4"
+                },
+                "tier": {
+                    "description": "tier that picked it",
+                    "type": "string",
+                    "example": "forte"
+                },
+                "trades": {
+                    "description": "trades in the track record",
+                    "type": "integer",
+                    "example": 12
+                },
+                "upside": {
+                    "description": "estimate.target / close - 1, null without an estimate",
+                    "type": "number",
+                    "example": 0.165
+                },
+                "win_rate": {
+                    "description": "0 to 1",
+                    "type": "number",
+                    "example": 0.75
+                }
+            }
+        },
+        "Plan": {
+            "type": "object",
+            "properties": {
+                "analyst_estimates": {
+                    "description": "false when disabled or Yahoo is unavailable",
+                    "type": "boolean",
+                    "example": true
+                },
+                "capital": {
+                    "type": "number",
+                    "example": 500
+                },
+                "cash": {
+                    "description": "capital - invested, BRL",
+                    "type": "number",
+                    "example": 224.6
+                },
+                "invested": {
+                    "description": "sum of the picks, BRL",
+                    "type": "number",
+                    "example": 275.4
+                },
+                "max_hold": {
+                    "description": "sell at the close after this many sessions",
+                    "type": "integer",
+                    "example": 5
+                },
+                "max_loss": {
+                    "description": "capital × risk / 100, BRL",
+                    "type": "number",
+                    "example": 10
+                },
+                "per_stock": {
+                    "description": "capital / top, BRL",
+                    "type": "number",
+                    "example": 100
+                },
+                "picks": {
+                    "description": "empty when no stock passed the filters",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Pick"
+                    }
+                },
+                "risk": {
+                    "description": "max loss per trade, percent of capital",
+                    "type": "number",
+                    "example": 2
+                },
+                "session": {
+                    "description": "latest session, the plan is for the next one",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "stale": {
+                    "description": "the session is more than 4 days old: a sync is missing",
+                    "type": "boolean",
+                    "example": false
+                },
+                "tiers": {
+                    "description": "the tiers tried, strongest first",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/TierSummary"
+                    }
+                },
+                "top": {
+                    "type": "integer",
+                    "example": 5
                 }
             }
         },
@@ -857,6 +1214,40 @@ const docTemplate = `{
                 }
             }
         },
+        "TickerEstimate": {
+            "type": "object",
+            "properties": {
+                "analysts": {
+                    "description": "analysts behind the target",
+                    "type": "integer",
+                    "example": 12
+                },
+                "close": {
+                    "description": "latest close, BRL",
+                    "type": "number",
+                    "example": 38.2
+                },
+                "rating": {
+                    "description": "consensus from 1 (strong buy) to 5 (sell), null when Yahoo has none",
+                    "type": "number",
+                    "example": 2.1
+                },
+                "target": {
+                    "description": "consensus price target, BRL",
+                    "type": "number",
+                    "example": 44.5
+                },
+                "ticker": {
+                    "type": "string",
+                    "example": "PETR4"
+                },
+                "upside": {
+                    "description": "target / close - 1",
+                    "type": "number",
+                    "example": 0.165
+                }
+            }
+        },
         "Tier": {
             "type": "object",
             "properties": {
@@ -872,6 +1263,54 @@ const docTemplate = `{
                 "rule": {
                     "type": "string",
                     "example": "RSI(2) \u003c 10"
+                }
+            }
+        },
+        "TierSummaries": {
+            "type": "object",
+            "properties": {
+                "session": {
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "tiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/TierSummary"
+                    }
+                }
+            }
+        },
+        "TierSummary": {
+            "type": "object",
+            "properties": {
+                "avg_return": {
+                    "description": "per trade, net of costs (0.01 = 1%)",
+                    "type": "number",
+                    "example": 0.0041
+                },
+                "candidates": {
+                    "description": "eligible stocks on the latest session",
+                    "type": "integer",
+                    "example": 3
+                },
+                "label": {
+                    "type": "string",
+                    "example": "forte"
+                },
+                "rule": {
+                    "type": "string",
+                    "example": "RSI(2) \u003c 10"
+                },
+                "trades": {
+                    "description": "trades of every stock on the latest session, before selection",
+                    "type": "integer",
+                    "example": 1840
+                },
+                "win_rate": {
+                    "description": "0 to 1",
+                    "type": "number",
+                    "example": 0.68
                 }
             }
         },

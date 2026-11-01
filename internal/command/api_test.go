@@ -36,7 +36,7 @@ func now() time.Time { return fixture.Day(2026, 11, 4) }
 func serve(t *testing.T, store *mock.Store, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	newMux(store, now).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
+	newMux(store, now, nil).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
 	return rec
 }
 
@@ -115,7 +115,7 @@ func (failQuotes) TickerQuotes(_ context.Context, _ string, _, _ time.Time) ([]q
 }
 
 func TestTickerRoutesFailOnQuotes(t *testing.T) {
-	mux := newMux(failQuotes{stored()}, now)
+	mux := newMux(failQuotes{stored()}, now, nil)
 	for _, path := range []string{"/tickers/PETR4", "/tickers/PETR4/quotes"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))

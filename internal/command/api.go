@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -8,7 +9,9 @@ import (
 	_ "oracle/docs" // swagger spec
 	"oracle/internal/bootstrap"
 	"oracle/internal/handler"
+	"oracle/internal/plan"
 	"oracle/internal/quote"
+	"oracle/internal/yahoo"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -28,7 +31,7 @@ func API(_ []string) {
 
 	server := &http.Server{
 		Addr:              ":" + app.Config.Port,
-		Handler:           newMux(quote.NewPostgres(app.DB), time.Now),
+		Handler:           newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -40,9 +43,19 @@ func API(_ []string) {
 	}
 }
 
-func newMux(store handler.StrategyReader, now func() time.Time) *http.ServeMux {
+// connectYahoo opens the analyst client of the plan routes.
+func connectYahoo(ctx context.Context) (plan.Estimator, error) {
+	client, err := yahoo.NewClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func newMux(store handler.StrategyReader, now func() time.Time, connect handler.Connect) *http.ServeMux {
 	quotes := handler.NewQuotes(store, now)
 	strategy := handler.NewStrategy(store, now)
+	daily := handler.NewPlan(store, now, connect)
 	mux := http.NewServeMux()
 	// Infra
 	mux.HandleFunc("GET /health", handler.Health)
@@ -56,10 +69,17 @@ func newMux(store handler.StrategyReader, now func() time.Time) *http.ServeMux {
 	// Sessions
 	mux.HandleFunc("GET /sessions/latest", quotes.LatestSession)
 	mux.HandleFunc("GET /sessions/{date}/quotes", quotes.SessionQuotes)
+
+	// Strategy
 	mux.HandleFunc("GET /strategy", strategy.Params)
 	mux.HandleFunc("GET /strategy/tiers", strategy.Tiers)
 	mux.HandleFunc("GET /tickers/{ticker}/analysis", strategy.Analysis)
 	mux.HandleFunc("GET /tickers/{ticker}/trades", strategy.Trades)
 	mux.HandleFunc("GET /signals", strategy.Signals)
+
+	// Plan
+	mux.HandleFunc("GET /recommendations", daily.Recommendations)
+	mux.HandleFunc("GET /recommendations/tiers", daily.RecommendationTiers)
+	mux.HandleFunc("GET /tickers/{ticker}/estimate", daily.Estimate)
 	return mux
 }

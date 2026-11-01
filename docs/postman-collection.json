@@ -1496,6 +1496,516 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Plan",
+      "description": "The trading plan of `oracle recommend` (`internal/plan`) and the analyst targets it uses. Read-only `GET` routes that answer JSON, errors included.",
+      "item": [
+        {
+          "name": "Get the trading plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recommendations?capital=500&top=5&risk=2&fill=true&years=3&estimates=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recommendations"
+              ],
+              "query": [
+                {
+                  "key": "capital",
+                  "value": "500",
+                  "description": "Capital in BRL, more than 0 (default 500)."
+                },
+                {
+                  "key": "top",
+                  "value": "5",
+                  "description": "Stocks in the plan, 1 to 50 (default 5); each gets up to capital / top."
+                },
+                {
+                  "key": "risk",
+                  "value": "2",
+                  "description": "Max loss per trade, percent of capital, more than 0 and at most 100 (default 2)."
+                },
+                {
+                  "key": "fill",
+                  "value": "true",
+                  "description": "Go down the tiers until the plan is full (default false, as oracle recommend)."
+                },
+                {
+                  "key": "years",
+                  "value": "3",
+                  "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                },
+                {
+                  "key": "estimates",
+                  "value": "true",
+                  "description": "Use analyst targets from Yahoo Finance (default true; the CLI's -no-estimates is estimates=false)."
+                }
+              ]
+            },
+            "description": "The plan of `oracle recommend` for the session after `session`, built by the same functions (`internal/plan`): which stocks to buy (`picks`), how many (`qty`, in the odd-lot market) and at what prices. Buy with a limit order at `max_entry`, valid for the day; once bought, leave the sell at `target` and the stop at `stop`; if neither is hit in `max_hold` sessions, sell at the close.\n\nTiers are tried from strongest to weakest and the plan stops at the first, unless `fill=true`; `tiers` shows how each tier tried did across every stock. Within a tier, stocks are ranked by `expectancy` and analyst `upside`; each gets up to `per_stock` and at most `max_loss` at the stop. `picks` is `[]` when no stock passed the filters.\n\nAnalyst targets come from Yahoo Finance, an unofficial API, cached for the session. When it is off (`estimates=false`) or unavailable, `analyst_estimates` is `false`, `estimate` and `upside` are `null` and the plan ranks by history only. Targets that take longer than 5 s are left for a later call.\n\nErrors: `400` for an option out of range or not a number/boolean; `404` when no stock quotes are stored in the period. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"plan with picks and tiers\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.session).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  pm.expect(body.analyst_estimates).to.be.a(\"boolean\");",
+                  "  pm.expect(body.invested + body.cash).to.be.closeTo(body.capital, 0.01);",
+                  "  pm.expect(body.picks.length).to.be.at.most(body.top);",
+                  "  body.picks.forEach(function (p) {",
+                  "    pm.expect(p).to.have.all.keys(\"ticker\", \"name\", \"tier\", \"qty\", \"max_entry\", \"target\", \"stop\", \"invested\", \"gain\", \"loss\", \"trades\", \"win_rate\", \"avg_return\", \"expectancy\", \"estimate\", \"upside\");",
+                  "    pm.expect(p.stop < p.max_entry && p.max_entry < p.target).to.be.true;",
+                  "    pm.expect(p.upside === null).to.eql(p.estimate === null);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/recommendations?capital=500&top=5&risk=2&fill=true&years=3&estimates=true",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "recommendations"
+                  ],
+                  "query": [
+                    {
+                      "key": "capital",
+                      "value": "500",
+                      "description": "Capital in BRL, more than 0 (default 500)."
+                    },
+                    {
+                      "key": "top",
+                      "value": "5",
+                      "description": "Stocks in the plan, 1 to 50 (default 5); each gets up to capital / top."
+                    },
+                    {
+                      "key": "risk",
+                      "value": "2",
+                      "description": "Max loss per trade, percent of capital, more than 0 and at most 100 (default 2)."
+                    },
+                    {
+                      "key": "fill",
+                      "value": "true",
+                      "description": "Go down the tiers until the plan is full (default false, as oracle recommend)."
+                    },
+                    {
+                      "key": "years",
+                      "value": "3",
+                      "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                    },
+                    {
+                      "key": "estimates",
+                      "value": "true",
+                      "description": "Use analyst targets from Yahoo Finance (default true; the CLI's -no-estimates is estimates=false)."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"session\":\"2026-10-30\",\"stale\":false,\"capital\":500,\"top\":5,\"risk\":2,\"per_stock\":100,\"max_loss\":10,\"invested\":80.4,\"cash\":419.6,\"max_hold\":5,\"analyst_estimates\":true,\"picks\":[{\"ticker\":\"SWNG3\",\"name\":\"SWNG3 SA\",\"tier\":\"forte\",\"qty\":3,\"max_entry\":26.8,\"target\":27.16,\"stop\":26.45,\"invested\":80.4,\"gain\":1.08,\"loss\":1.05,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149,\"expectancy\":0.005,\"estimate\":null,\"upside\":null}],\"tiers\":[{\"label\":\"forte\",\"rule\":\"RSI(2) < 10\",\"candidates\":1,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149},{\"label\":\"médio\",\"rule\":\"RSI(2) < 30\",\"candidates\":1,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149},{\"label\":\"fraco\",\"rule\":\"RSI(2) < 50\",\"candidates\":1,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149},{\"label\":\"tendência\",\"rule\":\"sem recuo\",\"candidates\":1,\"trades\":10,\"win_rate\":0.5,\"avg_return\":0.0002}]}\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/recommendations?capital=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "recommendations"
+                  ],
+                  "query": [
+                    {
+                      "key": "capital",
+                      "value": "0",
+                      "description": "Capital in BRL, more than 0 (default 500)."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"capital \\\"0\\\" must be more than 0\"}\n"
+            },
+            {
+              "name": "400 Bad Request (top)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/recommendations?top=51",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "recommendations"
+                  ],
+                  "query": [
+                    {
+                      "key": "top",
+                      "value": "51",
+                      "description": "Stocks in the plan, 1 to 50 (default 5); each gets up to capital / top."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"top \\\"51\\\" must be a whole number from 1 to 50\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "Summarize the tiers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/recommendations/tiers?years=3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "recommendations",
+                "tiers"
+              ],
+              "query": [
+                {
+                  "key": "years",
+                  "value": "3",
+                  "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                }
+              ]
+            },
+            "description": "How every tier did over the history of every stock traded on the latest session, before any selection, and how many stocks are `candidates` (eligible) today: the table `oracle recommend` prints under the plan, for every tier and not only the ones it tried. `win_rate` and `avg_return` are fractions (`0.01` = 1%), net of costs.\n\nErrors: `400` for `years` outside 1–30; `404` when no stock quotes are stored in the period. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"every tier, strongest first\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.tiers.map(function (t) { return t.label; })).to.eql([\"forte\", \"médio\", \"fraco\", \"tendência\"]);",
+                  "  body.tiers.forEach(function (t) {",
+                  "    pm.expect(t).to.have.all.keys(\"label\", \"rule\", \"candidates\", \"trades\", \"win_rate\", \"avg_return\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/recommendations/tiers",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "recommendations",
+                    "tiers"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"session\":\"2026-10-30\",\"tiers\":[{\"label\":\"forte\",\"rule\":\"RSI(2) < 10\",\"candidates\":1,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149},{\"label\":\"médio\",\"rule\":\"RSI(2) < 30\",\"candidates\":1,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149},{\"label\":\"fraco\",\"rule\":\"RSI(2) < 50\",\"candidates\":1,\"trades\":5,\"win_rate\":1,\"avg_return\":0.0149},{\"label\":\"tendência\",\"rule\":\"sem recuo\",\"candidates\":1,\"trades\":10,\"win_rate\":0.5,\"avg_return\":0.0002}]}\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/recommendations/tiers?years=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "recommendations",
+                    "tiers"
+                  ],
+                  "query": [
+                    {
+                      "key": "years",
+                      "value": "0",
+                      "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"years \\\"0\\\" must be a whole number from 1 to 30\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "Get the analyst target of a ticker",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickers/:ticker/estimate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickers",
+                ":ticker",
+                "estimate"
+              ],
+              "variable": [
+                {
+                  "key": "ticker",
+                  "value": "PETR4",
+                  "description": "B3 ticker, case-insensitive."
+                }
+              ]
+            },
+            "description": "The consensus price `target` (BRL) and `rating` (1 strong buy to 5 sell, `null` when Yahoo has none) from Yahoo Finance, how many `analysts` are behind it, and the `upside` from the latest `close` (`target / close - 1`), the same upside the plan ranks by. Cached for the latest session.\n\nYahoo Finance is an unofficial API: this request depends on it, so it may answer `503` when Yahoo is down or slower than 5 s. Errors: `404` for a ticker without quotes or without analyst coverage; `503` when estimates are unavailable; try again later. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"200 with the estimate, or 503 when Yahoo is unavailable\", function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 503]);",
+                  "});",
+                  "pm.test(\"estimate shape\", function () {",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 503) { pm.expect(body).to.have.all.keys(\"error\"); return; }",
+                  "  pm.expect(body).to.have.all.keys(\"ticker\", \"close\", \"target\", \"rating\", \"analysts\", \"upside\");",
+                  "  pm.expect(body.upside).to.be.closeTo(body.target / body.close - 1, 0.0001);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/estimate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "estimate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "PETR4",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"ticker\":\"PETR4\",\"close\":38.2,\"target\":60.75,\"rating\":1.46154,\"analysts\":12,\"upside\":0.5903}\n"
+            },
+            {
+              "name": "404 Not Found (no coverage)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/estimate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "estimate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "SWNG3",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"no analyst coverage for SWNG3\"}\n"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/estimate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "estimate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "ZZZZ3",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"ticker ZZZZ3 not found\"}\n"
+            },
+            {
+              "name": "503 Service Unavailable",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/estimate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "estimate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "PETR4",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Service Unavailable",
+              "code": 503,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"analyst estimates are unavailable, try again later\"}\n"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

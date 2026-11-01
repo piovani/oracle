@@ -13,14 +13,15 @@ linter cannot see the problem (for example across packages or at runtime).
 - **Splits.** Prices are not adjusted. A close ratio outside 0.6–1/0.6 breaks the series
   (`swing.Segments` in the backtest, `continuous`, also in `internal/swing`, in recommend). New code that walks prices
   must respect segments, not raw series.
-- **Shared logic.** `recommend` and `backtest` call the same `swing` functions. Flag trading
-  logic duplicated or reimplemented outside `internal/swing`.
+- **Shared logic.** `recommend` and `backtest` call the same `swing` functions, and `recommend`
+  and the API's `/recommendations` the same `plan.Build`. Flag trading logic duplicated or
+  reimplemented outside `internal/swing` and `internal/plan`.
 - **Commands.** Each command is `func Name(args []string)` with its own `flag.FlagSet`, starts
   with `ctx, app := bootstrap.Start()` + `defer app.Close()`, and exits with `app.Fatalf`,
   never `log.Fatalf`/`os.Exit` after `Start` (it would skip `Close`). The command is
   registered in the map in `cmd/oracle/main.go`.
-- **Contracts.** Dependencies go through `quote.Store`, `quote.Source` and the `estimator` in
-  `command`. A change to `quote.Store` updates the suite in `test/contract`, `test/mock` and
+- **Contracts.** Dependencies go through `quote.Store`, `quote.Source` and
+  `plan.Estimator`. A change to `quote.Store` updates the suite in `test/contract`, `test/mock` and
   `quote.Postgres` together. Tests importing `test/mock` live in the external `_test` package.
 - **Data.** `SaveFile` is one transaction per file with `ON CONFLICT DO NOTHING`; sync stays
   incremental and idempotent through `SyncedFile`. `b3.ErrNotFound` is skipped, not an error.

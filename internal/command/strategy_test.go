@@ -204,7 +204,7 @@ func TestStrategyHidesStoreErrors(t *testing.T) {
 			t.Errorf("%s: got %d %s, want 500", path, rec.Code, rec.Body.String())
 		}
 	}
-	mux := newMux(failQuotes{strategyStore()}, now)
+	mux := newMux(failQuotes{strategyStore()}, now, nil)
 	for _, path := range []string{"/tickers/WIN3/analysis", "/tickers/WIN3/trades"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))

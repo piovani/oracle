@@ -6,7 +6,6 @@ import (
 	"math"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -287,14 +286,9 @@ func (h *Strategy) options(w http.ResponseWriter, r *http.Request) (swing.Tier, 
 		}
 		tier = found
 	}
-	years := defaultYears
-	if value := r.URL.Query().Get("years"); value != "" {
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 1 || n > maxYears {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("years %q must be a whole number from 1 to %d", value, maxYears))
-			return swing.Tier{}, time.Time{}, false
-		}
-		years = n
+	years, ok := queryYears(w, r)
+	if !ok {
+		return swing.Tier{}, time.Time{}, false
 	}
 	return tier, h.now().AddDate(-years, 0, 0), true
 }

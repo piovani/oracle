@@ -169,8 +169,13 @@ To change the strategy, go to `internal/swing`. `recommend` and `backtest` share
 | `GET /tickers/{ticker}/analysis?tier=&years=` | the rule on one stock: today's signal, order prices and track record (`422` for funds, ETFs and BDRs) |
 | `GET /tickers/{ticker}/trades?tier=&years=` | the simulated trades behind that track record |
 | `GET /signals?tier=&years=` | every stock with a signal on the latest session, eligible first, then by expectancy |
+| `GET /recommendations?capital=&top=&risk=&fill=&years=&estimates=` | the trading plan of `recommend`: picks with quantity, buy limit, target and stop, plus how each tier tried did |
+| `GET /recommendations/tiers?years=` | how every tier did across the stocks of the latest session, and today's candidates |
+| `GET /tickers/{ticker}/estimate` | the analyst target and rating from Yahoo Finance, with the upside from the latest close (`503` when Yahoo is unavailable) |
 
 The strategy routes call the same `internal/swing` functions as `recommend` (`Analyze`, `Scan`, `TrackRecord`), so their numbers match the CLI. `tier` defaults to `forte` and accepts the labels without accents (`medio`, `tendencia`); `years` defaults to 3, like `recommend`.
+
+The plan routes call `plan.Build`, the function `recommend` prints, with the same defaults (`capital=500`, `top=5`, `risk=2`). Analyst targets come from Yahoo Finance: the server opens one Yahoo session per trading session and caches the targets, so only the first call of a session waits for them (at most 5 s; slower targets are left for a later call). When Yahoo fails, the plan ranks by history only and says so in `analyst_estimates`.
 
 Prices are as traded, not adjusted for splits or dividends, like everywhere else in the project.
 
@@ -213,7 +218,7 @@ The image is built for `linux/arm64` and holds only the `oracle` binary. Inside 
 go test ./...
 ```
 
-The unit tests sit next to the code they test and don't need a database. What a package depends on is a contract: `quote.Store` for the database, `quote.Source` for the B3 files and an estimator for Yahoo in `recommend`. Unit tests use the in-memory implementations in `test/mock`. The B3 and Yahoo HTTP clients themselves are tested against local HTTP servers.
+The unit tests sit next to the code they test and don't need a database. What a package depends on is a contract: `quote.Store` for the database, `quote.Source` for the B3 files and `plan.Estimator` for Yahoo in the trading plan. Unit tests use the in-memory implementations in `test/mock`. The B3 and Yahoo HTTP clients themselves are tested against local HTTP servers.
 
 The integration tests are in `test/integration`, behind the `integration` build tag, so `go test ./...` skips them:
 

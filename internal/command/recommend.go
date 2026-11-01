@@ -2,55 +2,36 @@ package command
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"slices"
 	"text/tabwriter"
 	"time"
 
 	"oracle/internal/bootstrap"
+	"oracle/internal/plan"
 	"oracle/internal/quote"
 	"oracle/internal/swing"
 	"oracle/internal/yahoo"
 )
 
-type row struct {
-	swing.Pick
-	name     string
-	strength string
-}
-
-// summary is how one signal level performed across the whole universe.
-type summary struct {
-	tier       swing.Tier
-	candidates int
-	trades     int
-	wins       int
-	sum        float64
-}
-
 type options struct {
-	capital     float64
-	top         int
-	risk        float64
+	plan.Options
 	years       int
 	noEstimates bool
-	fill        bool
 }
 
 // Recommend prints the trading plan for the next session.
 func Recommend(args []string) {
 	fs := flag.NewFlagSet("oracle recommend", flag.ExitOnError)
 	var opts options
-	fs.Float64Var(&opts.capital, "capital", 500, "capital available in BRL")
-	fs.IntVar(&opts.top, "top", 5, "number of stocks to recommend")
-	fs.Float64Var(&opts.risk, "risk", 2, "max loss per trade as a percentage of capital")
+	fs.Float64Var(&opts.Capital, "capital", 500, "capital available in BRL")
+	fs.IntVar(&opts.Top, "top", 5, "number of stocks to recommend")
+	fs.Float64Var(&opts.Risk, "risk", 2, "max loss per trade as a percentage of capital")
 	fs.IntVar(&opts.years, "years", 3, "years of history used in the backtest")
 	fs.BoolVar(&opts.noEstimates, "no-estimates", false, "skip analyst estimates")
-	fs.BoolVar(&opts.fill, "fill", false, "complete the list with weaker signals")
+	fs.BoolVar(&opts.Fill, "fill", false, "complete the list with weaker signals")
 	_ = fs.Parse(args) // ExitOnError: a bad flag prints the usage and exits
 
 	ctx, app := bootstrap.Start()
@@ -70,117 +51,26 @@ func Recommend(args []string) {
 	}
 
 	params := swing.DefaultParams()
-	estimates := newEstimates(ctx, !opts.noEstimates)
-	rows, summaries := buildPlan(ctx, history, latest, params, estimates, opts)
+	estimates := plan.NewEstimates(analysts(ctx, !opts.noEstimates))
+	rows, summaries := plan.Build(ctx, history, latest, params, estimates, opts.Options)
 	printPlan(rows, summaries, params, latest, opts)
 }
 
-// buildPlan tries the signal levels from strongest to weakest. It stops at the first level,
-// unless -fill is set and the list is still short.
-func buildPlan(ctx context.Context, history map[string][]quote.Quote, latest time.Time, params swing.Params, estimates *estimates, opts options) ([]row, []summary) {
-	var rows []row
-	var summaries []summary
-	taken := make(map[string]bool)
-
-	for _, tier := range swing.Tiers {
-		params.Oversold = tier.Oversold
-		analyses, s := analyzeTier(history, latest, params, tier)
-
-		eligible := eligibleTickers(analyses, params)
-		s.candidates = len(eligible)
-		summaries = append(summaries, s)
-
-		estimates.fetch(ctx, eligible)
-		for _, pick := range swing.Rank(analyses, estimates.byTicker, params, opts.capital, opts.risk, opts.top) {
-			if len(rows) == opts.top {
-				break
-			}
-			if taken[pick.Ticker] {
-				continue
-			}
-			taken[pick.Ticker] = true
-			bars := history[pick.Ticker]
-			rows = append(rows, row{pick, bars[len(bars)-1].Name, tier.Label})
-		}
-		if len(rows) == opts.top || !opts.fill {
-			break
-		}
-	}
-	return rows, summaries
-}
-
-// analyzeTier runs the rule on every stock traded on the last session.
-func analyzeTier(history map[string][]quote.Quote, latest time.Time, params swing.Params, tier swing.Tier) ([]swing.Analysis, summary) {
-	s := summary{tier: tier}
-	analyses := swing.Scan(history, latest, params)
-	for _, a := range analyses {
-		s.trades += a.Trades
-		s.wins += a.Wins
-		s.sum += a.SumReturn
-	}
-	return analyses, s
-}
-
-func eligibleTickers(analyses []swing.Analysis, params swing.Params) []string {
-	var tickers []string
-	for _, a := range analyses {
-		if a.Eligible(params) {
-			tickers = append(tickers, a.Ticker)
-		}
-	}
-	slices.Sort(tickers)
-	return tickers
-}
-
-// estimator gives analyst targets; *yahoo.Client in production.
-type estimator interface {
-	Estimate(ctx context.Context, ticker string) (yahoo.Estimate, error)
-}
-
-type estimates struct {
-	client   estimator
-	byTicker map[string]yahoo.Estimate
-	tried    map[string]bool
-}
-
-func newEstimates(ctx context.Context, enabled bool) *estimates {
-	e := &estimates{byTicker: make(map[string]yahoo.Estimate), tried: make(map[string]bool)}
+// analysts connects to Yahoo for analyst targets, or returns nil to rank by history only.
+func analysts(ctx context.Context, enabled bool) plan.Estimator {
 	if !enabled {
-		return e
+		return nil
 	}
 	client, err := yahoo.NewClient(ctx)
 	if err != nil {
 		log.Printf("analyst estimates unavailable, ranking by history only: %v", err)
-		return e
+		return nil
 	}
-	e.client = client
-	return e
+	return client
 }
 
-func (e *estimates) fetch(ctx context.Context, tickers []string) {
-	if e.client == nil {
-		return
-	}
-	for _, ticker := range tickers {
-		if e.tried[ticker] {
-			continue
-		}
-		e.tried[ticker] = true
-
-		estimate, err := e.client.Estimate(ctx, ticker)
-		if errors.Is(err, yahoo.ErrNoCoverage) {
-			continue
-		}
-		if err != nil {
-			log.Printf("%s: estimate skipped: %v", ticker, err)
-			continue
-		}
-		e.byTicker[ticker] = estimate
-	}
-}
-
-func printPlan(rows []row, summaries []summary, params swing.Params, latest time.Time, opts options) {
-	capital, risk, top, years := opts.capital, opts.risk, opts.top, opts.years
+func printPlan(rows []plan.Row, summaries []plan.Summary, params swing.Params, latest time.Time, opts options) {
+	capital, risk, top, years := opts.Capital, opts.Risk, opts.Top, opts.years
 	fmt.Printf("Plano de operações — base: pregão de %s\n", latest.Format("02/01/2006"))
 	fmt.Printf("Capital R$ %.2f | até R$ %.2f por ação | perda máxima R$ %.2f por operação\n\n",
 		capital, capital/float64(top), capital*risk/100)
@@ -203,7 +93,7 @@ func printPlan(rows []row, summaries []summary, params swing.Params, latest time
 			}
 		}
 		fmt.Fprintf(w, "%sF\t%s\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t+%.2f\t-%.2f\t%d\t%.0f%%\t%+.2f%%\t%s\t%s\t%s\n",
-			r.Ticker, r.name, r.strength, r.Qty, r.MaxEntry, r.Target, r.Stop, r.Invested(), r.Gain(), r.Loss(),
+			r.Ticker, r.Name, r.Tier, r.Qty, r.MaxEntry, r.Target, r.Stop, r.Invested(), r.Gain(), r.Loss(),
 			r.Trades, 100*r.WinRate(), 100*r.AvgReturn(), target, upside, rating)
 		invested += r.Invested()
 	}
@@ -221,11 +111,11 @@ func printPlan(rows []row, summaries []summary, params swing.Params, latest time
 	fmt.Printf("\nSinais usados e desempenho de cada regra em todo o universo (%d anos, sem seleção):\n", years)
 	w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, s := range summaries {
-		if s.trades == 0 {
+		if s.Trades == 0 {
 			continue
 		}
 		fmt.Fprintf(w, "  %s\t%s\t%d candidatas hoje\t%d operações\t%.1f%% de acerto\t%+.2f%% por operação\n",
-			s.tier.Label, s.tier.Rule, s.candidates, s.trades, 100*float64(s.wins)/float64(s.trades), 100*s.sum/float64(s.trades))
+			s.Tier.Label, s.Tier.Rule, s.Candidates, s.Trades, 100*s.WinRate(), 100*s.AvgReturn())
 	}
 	w.Flush()
 }
