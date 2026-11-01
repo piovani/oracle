@@ -16,9 +16,10 @@ make lint                     # golangci-lint v2, config in .golangci.yml; must 
 make lint-fix
 go test ./...
 go test ./internal/swing -run TestName -v   # single test
+make test-integration         # needs docker compose up -d
 ```
 
-Tests don't need a database; they build synthetic quote series in memory. Extra flags not exposed by the Makefile (`-years`, `-no-estimates`, `-warmup`, `-lookback`, `-oversold`, `-min-volume`) are passed with `go run ./cmd/oracle <command> -flag`.
+Unit tests don't need a database; they build synthetic quote series in memory, fake B3 and Yahoo with `httptest` and Postgres with `go-sqlmock`. Integration tests live in `test/integration` behind the `integration` build tag (excluded from `go test ./...`): each test creates and drops its own Postgres database, and the CLI tests run the compiled binary. Extra flags not exposed by the Makefile (`-years`, `-no-estimates`, `-warmup`, `-lookback`, `-oversold`, `-min-volume`) are passed with `go run ./cmd/oracle <command> -flag`.
 
 ## Architecture
 

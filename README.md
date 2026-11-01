@@ -113,6 +113,8 @@ internal/
   yahoo/       analyst estimates
 config/        reads .env
 pkg/db/        Postgres connection
+test/
+  integration/ tests against a real Postgres and the compiled binary
 ```
 
 The project builds one binary, `oracle`, and the first argument picks the command:
@@ -156,6 +158,15 @@ The image is built for `linux/arm64` and holds only the `oracle` binary. Inside 
 go test ./...
 ```
 
-The tests cover the B3 parser, the sync, the strategy and the backtest. They don't need a database.
+The unit tests sit next to the code they test and don't need a database: the B3 and Yahoo APIs are replaced by local HTTP servers and Postgres by `go-sqlmock`.
+
+The integration tests are in `test/integration`, behind the `integration` build tag, so `go test ./...` skips them:
+
+```
+docker compose up -d
+make test-integration
+```
+
+They run against the Postgres from `docker-compose.yml`, using the same `DB_*` variables as the commands. Every test creates its own database and drops it at the end, so the data you synced is never touched. They cover the sync (filtering, incremental loads, duplicates, rollback of a failed file), the history query, the whole sync → history → strategy pipeline, and the compiled `oracle` binary for every command and its error exits. B3 and Yahoo are still faked, so the tests don't depend on the network.
 
 This is not investment advice.

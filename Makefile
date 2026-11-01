@@ -1,4 +1,4 @@
-.PHONY: sync recommend backtest test lint lint-fix docker-build
+.PHONY: sync recommend backtest test test-integration lint lint-fix docker-build
 
 sync:
 	go run ./cmd/oracle sync $(if $(SINCE),-since $(SINCE))
@@ -11,6 +11,10 @@ backtest:
 
 test:
 	go test ./...
+
+# Needs Postgres from docker-compose.yml; every test creates and drops its own database.
+test-integration:
+	go test -tags integration -count=1 ./test/integration/...
 
 lint:
 	golangci-lint run ./...
