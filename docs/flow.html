@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-US">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fluxo do oracle</title>
+<title>Oracle Flow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
@@ -174,20 +174,20 @@ section > p { max-width: 68ch; color: var(--muted); }
 <div class="page">
   <header>
     <span class="eyebrow">oracle · Go + Postgres</span>
-    <h1>Das cotações da B3 ao plano do dia</h1>
-    <p class="lead">Três comandos dividem o trabalho: <code>sync</code> traz o histórico para o banco, <code>recommend</code> monta o plano de amanhã e <code>backtest</code> testa a mesma regra no passado. Escolha um comando para ver o caminho dele.</p>
+    <h1>From B3 quotes to the daily plan</h1>
+    <p class="lead">Three commands split the work: <code>sync</code> loads the history into the database, <code>recommend</code> builds tomorrow's plan, and <code>backtest</code> tests the same rule on past data. Pick a command to see its path.</p>
   </header>
 
   <section aria-labelledby="flow-title">
-    <h2 id="flow-title">Fluxo</h2>
-    <div class="picker" role="group" aria-label="Escolher comando">
-      <button type="button" id="pick-all" data-flow="all" aria-pressed="true">tudo</button>
+    <h2 id="flow-title">Flow</h2>
+    <div class="picker" role="group" aria-label="Choose command">
+      <button type="button" id="pick-all" data-flow="all" aria-pressed="true">all</button>
       <button type="button" id="pick-sync" data-flow="sync" aria-pressed="false">make sync</button>
       <button type="button" id="pick-recommend" data-flow="recommend" aria-pressed="false">make recommend</button>
       <button type="button" id="pick-backtest" data-flow="backtest" aria-pressed="false">make backtest</button>
     </div>
     <div class="diagram">
-      <svg id="flow" viewBox="0 0 960 840" role="img" aria-label="Diagrama do fluxo: B3, leitura dos arquivos, sync, Postgres, histórico, recommend e backtest usando internal/swing">
+      <svg id="flow" viewBox="0 0 960 840" role="img" aria-label="Flow diagram: B3, file parsing, sync, Postgres, history, recommend and backtest using internal/swing">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
           <marker id="arrow-lit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
@@ -198,35 +198,35 @@ section > p { max-width: 68ch; color: var(--muted); }
   </section>
 
   <section aria-labelledby="trade-title">
-    <h2 id="trade-title">Uma operação, pregão a pregão</h2>
-    <p>Tudo é medido em ATR, a oscilação diária média dos últimos 14 pregões, a partir do fechamento do dia do sinal. O exemplo abaixo é ilustrativo.</p>
+    <h2 id="trade-title">One trade, session by session</h2>
+    <p>Everything is measured in ATR, the average daily range over the last 14 sessions, starting from the close of the signal day. The example below is illustrative.</p>
     <div class="facts">
-      <span>acima da média de 200 dias</span>
+      <span>above the 200-day average</span>
       <span>RSI(2) &lt; 10</span>
-      <span>volume mediano ≥ R$ 5 mi/dia</span>
-      <span>saída em até 5 pregões</span>
+      <span>median volume ≥ R$5M/day</span>
+      <span>exit within 5 sessions</span>
     </div>
     <div class="chart">
-      <svg viewBox="0 0 1000 270" role="img" aria-label="Exemplo de operação: sinal no fechamento do dia D, compra em D+1 a 0,5 ATR abaixo, venda no alvo em D+3">
+      <svg viewBox="0 0 1000 270" role="img" aria-label="Example trade: signal at the close of day D, buy on D+1 at 0.5 ATR below, sell at the target on D+3">
         <g id="trade"></g>
       </svg>
     </div>
   </section>
 
   <section aria-labelledby="rules-title">
-    <h2 id="rules-title">O que não pode quebrar</h2>
+    <h2 id="rules-title">What must not break</h2>
     <div class="rules">
       <div class="rule">
-        <h3>Sem olhar o futuro</h3>
-        <p>No backtest, cada decisão do dia D usa só o que se sabia no fechamento de D. O histórico de uma ação só conta operações que já terminaram até ali.</p>
+        <h3>No look-ahead</h3>
+        <p>In the backtest, every decision on day D uses only what was known at the close of D. A stock's track record only counts trades that had already ended by then.</p>
       </div>
       <div class="rule">
-        <h3>Splits quebram a série</h3>
-        <p>Os preços não são ajustados. Uma variação de fechamento abaixo de 0,6× ou acima de 1/0,6× é tratada como desdobramento ou grupamento, e a série é cortada ali.</p>
+        <h3>Splits break the series</h3>
+        <p>Prices are not adjusted. A close-to-close change below 0.6× or above 1/0.6× is treated as a split or reverse split, and the series is cut there.</p>
       </div>
       <div class="rule">
-        <h3>Uma regra só</h3>
-        <p><code>recommend</code> e <code>backtest</code> chamam as mesmas funções de <code>internal/swing</code>. Mudou a regra, os dois mudam juntos, e o backtest continua medindo o plano real.</p>
+        <h3>One rule</h3>
+        <p><code>recommend</code> and <code>backtest</code> call the same <code>internal/swing</code> functions. Change the rule and both change together, so the backtest keeps measuring the real plan.</p>
       </div>
     </div>
   </section>
@@ -250,19 +250,19 @@ section > p { max-width: 68ch; color: var(--muted); }
   // ---- Flow diagram ----
   var W = 220, H = 60;
   var nodes = [
-    { id: "src",    x: 370, y: 20,  t: "B3 · COTAHIST",      s: "ZIPs anuais, mensais e diários", kind: "external", flows: ["sync"] },
-    { id: "b3",     x: 370, y: 120, t: "internal/b3",        s: "lê registros de 245 colunas",    flows: ["sync"] },
-    { id: "sync",   x: 370, y: 220, t: "quote.SyncHistory",  s: "uma transação por arquivo",      flows: ["sync"] },
+    { id: "src",    x: 370, y: 20,  t: "B3 · COTAHIST",      s: "annual, monthly and daily ZIPs", kind: "external", flows: ["sync"] },
+    { id: "b3",     x: 370, y: 120, t: "internal/b3",        s: "parses 245-column records",    flows: ["sync"] },
+    { id: "sync",   x: 370, y: 220, t: "quote.SyncHistory",  s: "one transaction per file",      flows: ["sync"] },
     { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest"] },
-    { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · conexão · Ctrl+C",      flows: ["sync", "recommend", "backtest"] },
-    { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "só /health por enquanto",        flows: [] },
-    { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "só ações ON, PN e units",        flows: ["recommend", "backtest"] },
-    { id: "yahoo",  x: 110, y: 440, t: "Yahoo Finance",      s: "preço-alvo dos analistas",       kind: "external", flows: ["recommend"] },
-    { id: "rec",    x: 110, y: 550, t: "oracle recommend",   s: "nível forte → tendência",        flows: ["recommend"] },
+    { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · connection · Ctrl+C",      flows: ["sync", "recommend", "backtest"] },
+    { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "only /health for now",        flows: [] },
+    { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "ON, PN and unit stocks only",        flows: ["recommend", "backtest"] },
+    { id: "yahoo",  x: 110, y: 440, t: "Yahoo Finance",      s: "analyst price targets",       kind: "external", flows: ["recommend"] },
+    { id: "rec",    x: 110, y: 550, t: "oracle recommend",   s: "tiers forte → tendência",        flows: ["recommend"] },
     { id: "bt",     x: 630, y: 550, t: "internal/backtest",  s: "prepare → simulate",             flows: ["backtest"] },
     { id: "swing",  x: 370, y: 660, t: "internal/swing",     s: "Signal · Levels · Simulate · Rank", kind: "shared", flows: ["recommend", "backtest"] },
-    { id: "plan",   x: 110, y: 760, t: "Plano do dia",       s: "compra até · venda · stop",      flows: ["recommend"] },
-    { id: "report", x: 630, y: 760, t: "Relatório + CSV",    s: "retorno, queda máx., Sharpe",    flows: ["backtest"] }
+    { id: "plan",   x: 110, y: 760, t: "Daily plan",       s: "buy limit · target · stop",      flows: ["recommend"] },
+    { id: "report", x: 630, y: 760, t: "Report + CSV",    s: "return, max drawdown, Sharpe",    flows: ["backtest"] }
   ];
   var edges = [
     { d: "M480 80 L480 118",                  flows: ["sync"] },
@@ -303,43 +303,43 @@ section > p { max-width: 68ch; color: var(--muted); }
 
   var steps = {
     all: {
-      title: "Visão geral",
+      title: "Overview",
       items: [
-        "<code>make sync</code> baixa os arquivos COTAHIST da B3 e grava as cotações no Postgres. Rode todo dia depois do fechamento.",
-        "<code>make recommend</code> lê os últimos 3 anos, procura sinais no último pregão e imprime o plano com quantidade, compra, alvo e stop.",
-        "<code>make backtest</code> roda a mesma regra pregão a pregão no passado, com um caixa só, e compara com o universo igual-peso.",
-        "Todo comando começa com <code>bootstrap.Start()</code>, que carrega o <code>.env</code>, conecta no banco e trata o Ctrl+C."
+        "<code>make sync</code> downloads B3's COTAHIST files and stores the quotes in Postgres. Run it every day after the close.",
+        "<code>make recommend</code> reads the last 3 years, looks for signals on the latest session and prints the plan with quantity, entry, target and stop.",
+        "<code>make backtest</code> runs the same rule session by session over past data, with a single cash balance, and compares it with the equal-weight universe.",
+        "Every command starts with <code>bootstrap.Start()</code>, which loads <code>.env</code>, connects to the database and handles Ctrl+C."
       ]
     },
     sync: {
       title: "make sync",
       items: [
-        "<code>quote.SyncHistory</code> lista os arquivos desde <code>SINCE</code>: anuais até o ano passado, mensais do ano atual e diários do mês atual.",
-        "Pula os arquivos que já estão em <code>synced_files</code>. Por isso rodar de novo é rápido e seguro.",
-        "<code>b3.Client.Fetch</code> baixa o ZIP e lê cada linha de 245 colunas, ficando só com o lote padrão do mercado à vista.",
-        "Grava em lotes de 1.000 com <code>ON CONFLICT DO NOTHING</code> e registra o arquivo, tudo na mesma transação.",
-        "Arquivo que a B3 não publicou (feriado, fim de semana, pregão não fechado) é pulado sem erro."
+        "<code>quote.SyncHistory</code> lists the files since <code>SINCE</code>: annual up to last year, monthly for the current year and daily for the current month.",
+        "Skips files already in <code>synced_files</code>, so running it again is fast and safe.",
+        "<code>b3.Client.Fetch</code> downloads the ZIP and parses each 245-column line, keeping only round-lot cash-market records.",
+        "Inserts in batches of 1,000 with <code>ON CONFLICT DO NOTHING</code> and records the file, all in the same transaction.",
+        "A file B3 hasn't published (holiday, weekend, session not closed yet) is skipped without an error."
       ]
     },
     recommend: {
       title: "make recommend",
       items: [
-        "<code>Store.History</code> carrega 3 anos de ações ON, PN e units, e o comando avisa se o último pregão no banco está velho.",
-        "Só entram ações que negociaram no último pregão. <code>swing.Analyze</code> descarta as de volume mediano abaixo de R$ 5 mi, simula a regra no histórico e vê se há sinal hoje.",
-        "É elegível quem tem sinal hoje, pelo menos 5 operações no histórico e expectância positiva.",
-        "Para as elegíveis, busca o preço-alvo no Yahoo Finance. Alvo abaixo do preço atual descarta a ação. Se o Yahoo falhar, segue só com o histórico.",
-        "<code>swing.Rank</code> ordena por expectância e upside, e calcula a quantidade pelo capital dividido por <code>TOP</code> e pela perda máxima <code>RISK</code>.",
-        "Começa no nível forte. Com <code>FILL=1</code>, desce para médio, fraco e tendência até completar a lista."
+        "<code>Store.History</code> loads 3 years of ON, PN and unit stocks, and the command warns if the latest session in the database is stale.",
+        "Only stocks that traded on the latest session are considered. <code>swing.Analyze</code> drops those with median volume below R$5M, simulates the rule over the history and checks for a signal today.",
+        "A stock is eligible if it has a signal today, at least 5 trades in its history and positive expectancy.",
+        "For eligible stocks, it fetches the price target from Yahoo Finance. A target below the current price drops the stock. If Yahoo fails, it continues with the history only.",
+        "<code>swing.Rank</code> sorts by expectancy and upside, and sizes each position from capital divided by <code>TOP</code> and the maximum loss <code>RISK</code>.",
+        "Starts at the <code>forte</code> tier. With <code>FILL=1</code>, it moves down to <code>médio</code>, <code>fraco</code> and <code>tendência</code> until the list is full."
       ]
     },
     backtest: {
       title: "make backtest",
       items: [
-        "<code>Store.History</code> carrega o período do teste e mais <code>-warmup</code> anos antes, para os sinais terem histórico.",
-        "<code>prepare</code> corta as séries nos splits, monta o calendário de pregões, acha os sinais e simula o histórico de cada ação.",
-        "<code>simulate</code> percorre os pregões. Em cada um, <code>settle</code> fecha as posições que saíram, <code>worth</code> calcula o patrimônio, <code>rank</code> escolhe os candidatos e <code>buy</code> envia as ordens.",
-        "O <code>rank</code> só usa operações que já terminaram naquele dia, então nenhuma decisão enxerga o futuro.",
-        "<code>Summary</code> calcula retorno, queda máxima, Sharpe e o quadro anual. Com <code>CSV=</code>, cada operação vai para um arquivo."
+        "<code>Store.History</code> loads the test period plus <code>-warmup</code> years before it, so the signals have history.",
+        "<code>prepare</code> cuts the series at splits, builds the session calendar, finds the signals and simulates each stock's track record.",
+        "<code>simulate</code> walks the sessions. On each one, <code>settle</code> closes positions that exited, <code>worth</code> computes equity, <code>rank</code> picks candidates and <code>buy</code> places the orders.",
+        "<code>rank</code> only uses trades that had already ended on that day, so no decision sees the future.",
+        "<code>Summary</code> computes return, max drawdown, Sharpe and the yearly table. With <code>CSV=</code>, every trade is written to a file."
       ]
     }
   };
@@ -380,9 +380,9 @@ section > p { max-width: 68ch; color: var(--muted); }
 
   el("line", { class: "grid-line", x1: 60, x2: 860, y1: 222, y2: 222 }, g);
   var levels = [
-    { v: 1,    cls: "target", label: "alvo  +1 ATR" },
-    { v: 0,    cls: "ref",    label: "fechamento de D" },
-    { v: -0.5, cls: "entry",  label: "compra −0,5 ATR" },
+    { v: 1,    cls: "target", label: "target  +1 ATR" },
+    { v: 0,    cls: "ref",    label: "close of D" },
+    { v: -0.5, cls: "entry",  label: "entry  −0.5 ATR" },
     { v: -2,   cls: "stop",   label: "stop  −2 ATR" }
   ];
   levels.forEach(function (l) {
@@ -404,10 +404,10 @@ section > p { max-width: 68ch; color: var(--muted); }
 
   el("circle", { class: "fill-dot entry", cx: 420, cy: y(-0.5), r: 6 }, g);
   el("circle", { class: "fill-dot target", cx: 620, cy: y(1), r: 6 }, g);
-  text(g, 320, 22, "note", "sinal no fechamento");
-  text(g, 420, 186, "note", "mínima tocou a ordem: comprou");
-  text(g, 620, 50, "note", "máxima tocou o alvo: vendeu");
-  text(g, 770, 264, "note", "sem alvo nem stop: vende no fechamento de D+5");
+  text(g, 320, 22, "note", "signal at the close");
+  text(g, 420, 186, "note", "low hit the order: bought");
+  text(g, 620, 50, "note", "high hit the target: sold");
+  text(g, 770, 264, "note", "no target or stop: sells at the close of D+5");
 })();
 </script>
 </body>
