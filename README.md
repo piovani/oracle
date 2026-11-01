@@ -118,6 +118,7 @@ test/
   contract/    behavior shared by every implementation of a contract
   fixture/     synthetic quote series shaped to trigger the strategy
   integration/ tests against a real Postgres and the compiled binary
+docs/          flow diagram (flow.html) and Postman collection of the HTTP API
 ```
 
 The project builds one binary, `oracle`, and the first argument picks the command:
@@ -143,6 +144,18 @@ defer app.Close()
 `Start` loads the configuration, connects to the database and returns a context that is canceled on Ctrl+C. From there the command uses `app.DB` and `app.Config`.
 
 To change the strategy, go to `internal/swing`. `recommend` and `backtest` share the same signal and simulation functions, so a change to one applies to the other.
+
+## HTTP API
+
+`oracle api` serves the HTTP API on `PORT` (default `8080`). For now it has a single route, `GET /health`, which answers `{"status":"ok","time":"<UTC, RFC 3339>"}`.
+
+The API is documented in `docs/postman-collection.json` (Postman Collection v2.1): each request has its description, saved examples (including the `405` for a wrong method) and tests. Import the file in Postman, or run it from the terminal with the [Postman CLI](https://learning.postman.com/docs/postman-cli/postman-cli-overview/):
+
+```
+postman collection run docs/postman-collection.json --env-var baseUrl=http://localhost:8080
+```
+
+`baseUrl` defaults to `http://localhost:8080`. When a route is added or changed, update its request and examples in the collection in the same change.
 
 ## Docker
 

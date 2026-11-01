@@ -1,0 +1,117 @@
+{
+  "info": {
+    "name": "oracle API",
+    "description": "HTTP API of the oracle, started with `go run ./cmd/oracle api` (or the `api` command of the Docker image).\n\nThe server listens on the port in `PORT` (default `8080`) and connects to Postgres with the `DB_*` variables before it starts listening: if the database is unreachable, the process exits and nothing answers.\n\nThere is no authentication. Responses are JSON unless noted; routes that don't exist answer `404` and known routes called with the wrong method answer `405` with an `Allow` header, both in plain text.\n\nSet `baseUrl` to the server you are calling. The default points at a local run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string",
+      "description": "Address of the oracle API, without a trailing slash."
+    }
+  ],
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Reports that the server is up, with the current server time in UTC (RFC 3339).\n\nThe database connection is checked once at startup, not on every call, so a `200` means the process is running and was able to connect when it started.\n\nOnly `GET` and `HEAD` are accepted; any other method answers `405 Method Not Allowed` with `Allow: GET, HEAD`. No side effects; safe to call repeatedly, for example from a load balancer or monitor."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"body is JSON\", function () {",
+              "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+              "});",
+              "pm.test(\"status is ok and time is RFC 3339 UTC\", function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.status).to.eql(\"ok\");",
+              "  pm.expect(body.time).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "200 OK",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\"status\":\"ok\",\"time\":\"2026-11-01T22:07:11Z\"}\n"
+        },
+        {
+          "name": "405 Method Not Allowed",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "status": "Method Not Allowed",
+          "code": 405,
+          "_postman_previewlanguage": "text",
+          "header": [
+            {
+              "key": "Allow",
+              "value": "GET, HEAD"
+            },
+            {
+              "key": "Content-Type",
+              "value": "text/plain; charset=utf-8"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ],
+          "body": "Method Not Allowed\n"
+        }
+      ]
+    }
+  ]
+}
