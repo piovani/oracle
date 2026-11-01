@@ -154,7 +154,18 @@ To change the strategy, go to `internal/swing`. `recommend` and `backtest` share
 
 ## HTTP API
 
-`oracle api` serves the HTTP API on `PORT` (default `8080`). For now it has a single route, `GET /health`, which answers `{"status":"ok","time":"<UTC, RFC 3339>"}`.
+`oracle api` serves the HTTP API on `PORT` (default `8080`). Every route is a read-only `GET` that answers JSON; errors come as `{"error": "..."}`.
+
+| Route | Returns |
+|---|---|
+| `GET /health` | `{"status":"ok","time":"<UTC, RFC 3339>"}` |
+| `GET /tickers` | every ticker stored, of any spec, with its first and last session |
+| `GET /tickers/{ticker}` | one ticker and its latest quote (`404` if it has no quotes) |
+| `GET /tickers/{ticker}/quotes?from=&to=` | its daily quotes, in date order; `from`/`to` are optional `YYYY-MM-DD`, both included |
+| `GET /sessions/latest` | the last day with quotes and whether it is stale (older than 4 days) |
+| `GET /sessions/{date}/quotes` | every quote of one day (`404` on weekends, holidays or days not synced) |
+
+Prices are as traded, not adjusted for splits or dividends, like everywhere else in the project.
 
 ### Swagger
 

@@ -33,9 +33,237 @@
                     }
                 }
             }
+        },
+        "/sessions/latest": {
+            "get": {
+                "description": "The last day with quotes in the database, and whether it is stale: older than 4 days, which means a sync is missing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Get the latest session",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Session"
+                        }
+                    },
+                    "404": {
+                        "description": "no quotes stored yet",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{date}/quotes": {
+            "get": {
+                "description": "Every quote of one trading day, of any spec, in ticker order.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "List the quotes of a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "2026-10-30",
+                        "description": "Trading day (YYYY-MM-DD)",
+                        "name": "date",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Quote"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "date is not a YYYY-MM-DD date",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no session on that day (weekend, holiday or not synced)",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/tickers": {
+            "get": {
+                "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\nName, spec and ISIN come from the latest quote of each ticker. An empty database answers an empty list.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "List tickers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Ticker"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/tickers/{ticker}": {
+            "get": {
+                "description": "Summary of one ticker and its latest quote. The ticker is case-insensitive.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Get a ticker",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "PETR4",
+                        "description": "B3 ticker",
+                        "name": "ticker",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/TickerDetail"
+                        }
+                    },
+                    "404": {
+                        "description": "no quotes for the ticker",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/tickers/{ticker}/quotes": {
+            "get": {
+                "description": "Daily quotes of one ticker, in date order. Prices are as traded, not adjusted for splits or dividends.\nWithout from and to, the whole history is returned. A range without sessions answers an empty list.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "List the quotes of a ticker",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "PETR4",
+                        "description": "B3 ticker",
+                        "name": "ticker",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "2026-10-01",
+                        "description": "First day, included (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "example": "2026-10-30",
+                        "description": "Last day, included (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Quote"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "from or to is not a YYYY-MM-DD date, or from is after to",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no quotes for the ticker",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "Error": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "ticker ZZZZ3 not found"
+                }
+            }
+        },
         "HealthResponse": {
             "type": "object",
             "properties": {
@@ -48,6 +276,159 @@
                     "description": "current server time, UTC, RFC 3339",
                     "type": "string",
                     "example": "2026-11-01T22:07:11Z"
+                }
+            }
+        },
+        "Quote": {
+            "type": "object",
+            "properties": {
+                "average": {
+                    "description": "BRL, volume-weighted",
+                    "type": "number",
+                    "example": 38.1
+                },
+                "close": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 38.2
+                },
+                "date": {
+                    "description": "YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "high": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 38.45
+                },
+                "low": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 37.62
+                },
+                "name": {
+                    "type": "string",
+                    "example": "PETROBRAS"
+                },
+                "open": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 37.9
+                },
+                "quantity": {
+                    "type": "integer",
+                    "example": 41250300
+                },
+                "ticker": {
+                    "type": "string",
+                    "example": "PETR4"
+                },
+                "trades": {
+                    "description": "number of trades",
+                    "type": "integer",
+                    "example": 52310
+                },
+                "volume": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 1571632430.5
+                }
+            }
+        },
+        "Session": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "description": "YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "stale": {
+                    "description": "more than 4 days old: a sync is missing",
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "Ticker": {
+            "type": "object",
+            "properties": {
+                "first_session": {
+                    "description": "first day with a quote, YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2020-01-02"
+                },
+                "isin": {
+                    "description": "ISIN of the latest quote",
+                    "type": "string",
+                    "example": "BRPETRACNPR6"
+                },
+                "last_session": {
+                    "description": "last day with a quote, YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "name": {
+                    "description": "company name as B3 abbreviates it",
+                    "type": "string",
+                    "example": "PETROBRAS"
+                },
+                "sessions": {
+                    "description": "days with a quote",
+                    "type": "integer",
+                    "example": 1700
+                },
+                "spec": {
+                    "description": "share type and listing segment: ON, PN, UNT for stocks; CI, DRN... for funds, ETFs and BDRs",
+                    "type": "string",
+                    "example": "PN N2"
+                },
+                "ticker": {
+                    "type": "string",
+                    "example": "PETR4"
+                }
+            }
+        },
+        "TickerDetail": {
+            "type": "object",
+            "properties": {
+                "first_session": {
+                    "description": "first day with a quote, YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2020-01-02"
+                },
+                "isin": {
+                    "description": "ISIN of the latest quote",
+                    "type": "string",
+                    "example": "BRPETRACNPR6"
+                },
+                "last_quote": {
+                    "$ref": "#/definitions/Quote"
+                },
+                "last_session": {
+                    "description": "last day with a quote, YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "name": {
+                    "description": "company name as B3 abbreviates it",
+                    "type": "string",
+                    "example": "PETROBRAS"
+                },
+                "sessions": {
+                    "description": "days with a quote",
+                    "type": "integer",
+                    "example": 1700
+                },
+                "spec": {
+                    "description": "share type and listing segment: ON, PN, UNT for stocks; CI, DRN... for funds, ETFs and BDRs",
+                    "type": "string",
+                    "example": "PN N2"
+                },
+                "ticker": {
+                    "type": "string",
+                    "example": "PETR4"
                 }
             }
         }

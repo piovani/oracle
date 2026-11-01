@@ -2,6 +2,7 @@ package quote
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"gorm.io/gorm"
@@ -84,6 +85,66 @@ func (p *Postgres) History(ctx context.Context, since time.Time) (map[string][]Q
 		history[q.Ticker] = append(history[q.Ticker], q)
 	}
 	return history, nil
+}
+
+func (p *Postgres) Tickers(ctx context.Context) ([]Ticker, error) {
+	return p.tickers(ctx, "")
+}
+
+func (p *Postgres) Ticker(ctx context.Context, ticker string) (Ticker, error) {
+	found, err := p.tickers(ctx, ticker)
+	if err != nil {
+		return Ticker{}, err
+	}
+	if len(found) == 0 {
+		return Ticker{}, ErrUnknownTicker
+	}
+	return found[0], nil
+}
+
+// tickers summarizes every ticker, or only the one given, taking the descriptive columns from its latest quote.
+func (p *Postgres) tickers(ctx context.Context, only string) ([]Ticker, error) {
+	span := p.quiet(ctx).Model(&Quote{}).
+		Select("ticker, MIN(date) AS first, MAX(date) AS last, COUNT(*) AS sessions").
+		Group("ticker")
+	if only != "" {
+		span = span.Where("ticker = ?", only)
+	}
+	tickers := []Ticker{}
+	err := p.quiet(ctx).Table("(?) AS s", span).
+		Select("q.ticker, q.name, q.spec, q.isin, s.first, s.last, s.sessions").
+		Joins("JOIN quotes q ON q.ticker = s.ticker AND q.date = s.last").
+		Order("q.ticker").
+		Scan(&tickers).Error
+	return tickers, err
+}
+
+// Days are passed as YYYY-MM-DD text so Postgres compares them as dates, whatever the session time zone.
+func (p *Postgres) TickerQuotes(ctx context.Context, ticker string, from, to time.Time) ([]Quote, error) {
+	query := p.quiet(ctx).Where("ticker = ?", ticker)
+	if !from.IsZero() {
+		query = query.Where("date >= ?", from.Format(time.DateOnly))
+	}
+	if !to.IsZero() {
+		query = query.Where("date <= ?", to.Format(time.DateOnly))
+	}
+	quotes := []Quote{}
+	err := query.Order("date").Find(&quotes).Error
+	return quotes, err
+}
+
+func (p *Postgres) Session(ctx context.Context, day time.Time) ([]Quote, error) {
+	quotes := []Quote{}
+	err := p.quiet(ctx).Where("date = ?", day.Format(time.DateOnly)).Order("ticker").Find(&quotes).Error
+	return quotes, err
+}
+
+func (p *Postgres) LatestSession(ctx context.Context) (time.Time, error) {
+	var latest sql.NullTime
+	if err := p.quiet(ctx).Model(&Quote{}).Select("MAX(date)").Row().Scan(&latest); err != nil {
+		return time.Time{}, err
+	}
+	return latest.Time, nil
 }
 
 // quiet skips GORM's query log, which would print every batch of a sync.

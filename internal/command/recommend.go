@@ -65,7 +65,7 @@ func Recommend(args []string) {
 	if latest.IsZero() {
 		app.Fatalf("no quotes in the database, run `make sync` first")
 	}
-	if time.Since(latest) > 4*24*time.Hour {
+	if time.Since(latest) > quote.StaleAfter {
 		log.Printf("last session in the database is %s, run `make sync` to update", latest.Format("02/01/2006"))
 	}
 

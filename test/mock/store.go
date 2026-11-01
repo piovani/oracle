@@ -18,6 +18,8 @@ type Store struct {
 	MigrateErr     error
 	SyncedFilesErr error
 	HistoryErr     error
+	// ReadErr fails Tickers, Ticker, TickerQuotes, Session and LatestSession.
+	ReadErr error
 	// SaveErr fails SaveFile for a file after load has run, like a failed commit.
 	SaveErr map[string]error
 
@@ -76,6 +78,96 @@ func (s *Store) History(_ context.Context, since time.Time) (map[string][]quote.
 		slices.SortFunc(bars, func(a, b quote.Quote) int { return a.Date.Compare(b.Date) })
 	}
 	return history, nil
+}
+
+func (s *Store) Tickers(context.Context) ([]quote.Ticker, error) {
+	s.Calls = append(s.Calls, "Tickers")
+	if s.ReadErr != nil {
+		return nil, s.ReadErr
+	}
+	byTicker := make(map[string]*quote.Ticker)
+	latest := make(map[string]quote.Quote)
+	for _, q := range s.Quotes {
+		t, ok := byTicker[q.Ticker]
+		if !ok {
+			t = &quote.Ticker{Ticker: q.Ticker, First: q.Date, Last: q.Date}
+			byTicker[q.Ticker] = t
+		}
+		t.Sessions++
+		if q.Date.Before(t.First) {
+			t.First = q.Date
+		}
+		if l, seen := latest[q.Ticker]; !seen || q.Date.After(l.Date) {
+			latest[q.Ticker] = q
+			t.Last = q.Date
+		}
+	}
+	tickers := make([]quote.Ticker, 0, len(byTicker))
+	for ticker, t := range byTicker {
+		l := latest[ticker]
+		t.Name, t.Spec, t.ISIN = l.Name, l.Spec, l.ISIN
+		tickers = append(tickers, *t)
+	}
+	slices.SortFunc(tickers, func(a, b quote.Ticker) int { return strings.Compare(a.Ticker, b.Ticker) })
+	return tickers, nil
+}
+
+func (s *Store) Ticker(ctx context.Context, ticker string) (quote.Ticker, error) {
+	tickers, err := s.Tickers(ctx)
+	s.Calls[len(s.Calls)-1] = "Ticker"
+	if err != nil {
+		return quote.Ticker{}, err
+	}
+	for _, t := range tickers {
+		if t.Ticker == ticker {
+			return t, nil
+		}
+	}
+	return quote.Ticker{}, quote.ErrUnknownTicker
+}
+
+func (s *Store) TickerQuotes(_ context.Context, ticker string, from, to time.Time) ([]quote.Quote, error) {
+	s.Calls = append(s.Calls, "TickerQuotes")
+	if s.ReadErr != nil {
+		return nil, s.ReadErr
+	}
+	quotes := []quote.Quote{}
+	for _, q := range s.Quotes {
+		if q.Ticker == ticker && (from.IsZero() || !q.Date.Before(from)) && (to.IsZero() || !q.Date.After(to)) {
+			quotes = append(quotes, q)
+		}
+	}
+	slices.SortFunc(quotes, func(a, b quote.Quote) int { return a.Date.Compare(b.Date) })
+	return quotes, nil
+}
+
+func (s *Store) Session(_ context.Context, day time.Time) ([]quote.Quote, error) {
+	s.Calls = append(s.Calls, "Session")
+	if s.ReadErr != nil {
+		return nil, s.ReadErr
+	}
+	quotes := []quote.Quote{}
+	for _, q := range s.Quotes {
+		if q.Date.Equal(day) {
+			quotes = append(quotes, q)
+		}
+	}
+	slices.SortFunc(quotes, func(a, b quote.Quote) int { return strings.Compare(a.Ticker, b.Ticker) })
+	return quotes, nil
+}
+
+func (s *Store) LatestSession(context.Context) (time.Time, error) {
+	s.Calls = append(s.Calls, "LatestSession")
+	if s.ReadErr != nil {
+		return time.Time{}, s.ReadErr
+	}
+	var latest time.Time
+	for _, q := range s.Quotes {
+		if q.Date.After(latest) {
+			latest = q.Date
+		}
+	}
+	return latest, nil
 }
 
 func (s *Store) has(q quote.Quote) bool {

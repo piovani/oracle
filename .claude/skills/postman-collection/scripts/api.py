@@ -9,8 +9,9 @@ Run from the repository root:
 
 check    compares the routes registered in internal/command/api.go with the collection and
          checks every request has a description, tests and saved examples. No server needed.
-capture  starts the API against postgres-test and prints the real response of each METHOD PATH,
-         to copy into saved examples.
+capture  starts the API against postgres-test, seeded with the sample quotes of scripts/seed
+         (PETR4 and VALE3 on 2026-10-28..30, XPML11 on 2026-10-30), and prints the real response
+         of each METHOD PATH, to copy into saved examples.
 test     runs check, then starts the API and runs the collection with the Postman CLI.
 
 The API is a freshly built binary on a free port, pointed at the postgres-test service of
@@ -33,10 +34,12 @@ import urllib.request
 COLLECTION = "docs/postman-collection.json"
 ROUTES_FILE = "internal/command/api.go"
 UNDOCUMENTED = ("/swagger/",)
+# oracle_postman is recreated by scripts/seed with a few sample quotes before the API starts.
 TEST_DB = {
     "DB_HOST": "localhost", "DB_PORT": "5433", "DB_USER": "oracle_test",
-    "DB_PASSWORD": "oracle_test", "DB_NAME": "oracle_test", "DB_SSLMODE": "disable",
+    "DB_PASSWORD": "oracle_test", "DB_NAME": "oracle_postman", "DB_SSLMODE": "disable",
 }
+SEED = "./.claude/skills/postman-collection/scripts/seed"
 # Headers that change on every call, or that only answer urllib's Connection: close,
 # and would only add noise to a saved example.
 VOLATILE = {"date", "content-length", "connection"}
@@ -128,6 +131,10 @@ class Server:
         db = subprocess.run(["make", "test-db"], capture_output=True, text=True, check=False)
         if db.returncode != 0:
             fail("could not start postgres-test (is Docker running?):\n" + db.stdout + db.stderr)
+
+        seed = subprocess.run(["go", "run", SEED], capture_output=True, text=True, check=False)
+        if seed.returncode != 0:
+            fail("could not seed oracle_postman:\n" + seed.stdout + seed.stderr)
 
         self.dir = tempfile.mkdtemp(prefix="oracle-postman-")
         binary = os.path.join(self.dir, "oracle")

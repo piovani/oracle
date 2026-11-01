@@ -112,6 +112,671 @@
           "body": "Method Not Allowed\n"
         }
       ]
+    },
+    {
+      "name": "Quotes",
+      "description": "Quotes loaded from B3 by `oracle sync`. Every route is a read-only `GET` and answers JSON, errors included (`{\"error\": \"...\"}`).",
+      "item": [
+        {
+          "name": "List tickers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickers"
+              ]
+            },
+            "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\n\n`name`, `spec` and `isin` come from the latest quote of each ticker; `spec` has B3's padding collapsed (`PN N2`). `first_session` and `last_session` are `YYYY-MM-DD`; `sessions` counts the days with a quote.\n\nAn empty database answers `[]`. A database failure answers `500` with `{\"error\":\"internal error\"}`. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"is a list of tickers\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an(\"array\");",
+                  "  body.forEach(function (t) {",
+                  "    pm.expect(t).to.have.all.keys(\"ticker\", \"name\", \"spec\", \"isin\", \"first_session\", \"last_session\", \"sessions\");",
+                  "    pm.expect(t.last_session).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"spec\":\"PN N2\",\"isin\":\"BRPETRACNPR6\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3},{\"ticker\":\"VALE3\",\"name\":\"VALE\",\"spec\":\"ON NM\",\"isin\":\"BRVALEACNOR0\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3},{\"ticker\":\"XPML11\",\"name\":\"XP MALLS\",\"spec\":\"CI\",\"isin\":\"BRXPMLCTF000\",\"first_session\":\"2026-10-30\",\"last_session\":\"2026-10-30\",\"sessions\":1}]\n"
+            },
+            {
+              "name": "405 Method Not Allowed",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers"
+                  ]
+                }
+              },
+              "status": "Method Not Allowed",
+              "code": 405,
+              "_postman_previewlanguage": "text",
+              "header": [
+                {
+                  "key": "Allow",
+                  "value": "GET, HEAD"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "text/plain; charset=utf-8"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                }
+              ],
+              "body": "Method Not Allowed\n"
+            }
+          ]
+        },
+        {
+          "name": "Get a ticker",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickers/:ticker",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickers",
+                ":ticker"
+              ],
+              "variable": [
+                {
+                  "key": "ticker",
+                  "value": "PETR4",
+                  "description": "B3 ticker, case-insensitive."
+                }
+              ]
+            },
+            "description": "Summary of one ticker, as in *List tickers*, plus `last_quote`: its quote on `last_session`.\n\nThe ticker is case-insensitive (`petr4` works). A ticker without quotes answers `404` with `{\"error\":\"ticker ZZZZ3 not found\"}`. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"ticker with its latest quote\", function () {",
+                  "  const body = pm.response.json();",
+                  "    pm.expect(body).to.include.all.keys(\"ticker\", \"name\", \"spec\", \"isin\", \"first_session\", \"last_session\", \"sessions\", \"last_quote\");",
+                  "  pm.expect(body.last_quote.date).to.eql(body.last_session);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "petr4",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"spec\":\"PN N2\",\"isin\":\"BRPETRACNPR6\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3,\"last_quote\":{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"date\":\"2026-10-30\",\"open\":37.9,\"high\":38.45,\"low\":37.62,\"average\":38.1,\"close\":38.2,\"trades\":52310,\"quantity\":41250300,\"volume\":1571636430}}\n"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "ZZZZ3",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"ticker ZZZZ3 not found\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "List the quotes of a ticker",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickers/:ticker/quotes?from=2026-10-29&to=2026-10-30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickers",
+                ":ticker",
+                "quotes"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-10-29",
+                  "description": "First day, included (YYYY-MM-DD). Optional."
+                },
+                {
+                  "key": "to",
+                  "value": "2026-10-30",
+                  "description": "Last day, included (YYYY-MM-DD). Optional."
+                }
+              ],
+              "variable": [
+                {
+                  "key": "ticker",
+                  "value": "PETR4",
+                  "description": "B3 ticker, case-insensitive."
+                }
+              ]
+            },
+            "description": "Daily quotes of one ticker, in date order. Prices are in BRL as traded, **not adjusted** for splits or dividends; `volume` is the traded value in BRL.\n\n`from` and `to` are optional and inclusive; without them the whole history is returned. A range without sessions answers `[]`.\n\nErrors: `400` when `from` or `to` is not `YYYY-MM-DD` or `from` is after `to`; `404` for a ticker without quotes. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"quotes in date order\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an(\"array\");",
+                  "  body.forEach(function (q, i) {",
+                  "    pm.expect(q).to.have.all.keys(\"ticker\", \"name\", \"date\", \"open\", \"high\", \"low\", \"average\", \"close\", \"trades\", \"quantity\", \"volume\");",
+                  "    if (i > 0) pm.expect(q.date > body[i - 1].date).to.be.true;",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/quotes?from=2026-10-29&to=2026-10-30",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "quotes"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "2026-10-29",
+                      "description": "First day, included (YYYY-MM-DD). Optional."
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-10-30",
+                      "description": "Last day, included (YYYY-MM-DD). Optional."
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "PETR4",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"date\":\"2026-10-29\",\"open\":37.8,\"high\":38.3,\"low\":37.55,\"average\":37.96,\"close\":38.05,\"trades\":50233,\"quantity\":40112800,\"volume\":1522681888},{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"date\":\"2026-10-30\",\"open\":37.9,\"high\":38.45,\"low\":37.62,\"average\":38.1,\"close\":38.2,\"trades\":52310,\"quantity\":41250300,\"volume\":1571636430}]\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/quotes?from=29-10-2026",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "quotes"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "29-10-2026",
+                      "description": "First day, included (YYYY-MM-DD). Optional."
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "PETR4",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"from \\\"29-10-2026\\\" is not a YYYY-MM-DD date\"}\n"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/quotes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "quotes"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "ZZZZ3",
+                      "description": "B3 ticker, case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"ticker ZZZZ3 not found\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "Get the latest session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "latest"
+              ]
+            },
+            "description": "The last day with quotes in the database (`YYYY-MM-DD`), and `stale`: `true` when it is more than 4 days old, which means a sync is missing (the same rule `oracle recommend` warns about).\n\nAn empty database answers `404` with `{\"error\":\"no quotes stored yet, run oracle sync\"}`. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"date and stale flag\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.date).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  pm.expect(body.stale).to.be.a(\"boolean\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/sessions/latest",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sessions",
+                    "latest"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"date\":\"2026-10-30\",\"stale\":false}\n"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/sessions/latest",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sessions",
+                    "latest"
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"no quotes stored yet, run oracle sync\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "List the quotes of a session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/:date/quotes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                ":date",
+                "quotes"
+              ],
+              "variable": [
+                {
+                  "key": "date",
+                  "value": "2026-10-30",
+                  "description": "Trading day (YYYY-MM-DD)."
+                }
+              ]
+            },
+            "description": "Every quote of one trading day, of any spec, in ticker order. Same fields as *List the quotes of a ticker*.\n\nErrors: `400` when the date is not `YYYY-MM-DD`; `404` when there is no session that day (weekend, holiday or not synced yet). Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"quotes of the requested day\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an(\"array\").that.is.not.empty;",
+                  "  body.forEach(function (q) {",
+                  "    pm.expect(pm.request.url.toString()).to.include(\"/sessions/\" + q.date + \"/quotes\");",
+                  "    pm.expect(q).to.have.all.keys(\"ticker\", \"name\", \"date\", \"open\", \"high\", \"low\", \"average\", \"close\", \"trades\", \"quantity\", \"volume\");",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/sessions/:date/quotes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sessions",
+                    ":date",
+                    "quotes"
+                  ],
+                  "variable": [
+                    {
+                      "key": "date",
+                      "value": "2026-10-30",
+                      "description": "Trading day (YYYY-MM-DD)."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"date\":\"2026-10-30\",\"open\":37.9,\"high\":38.45,\"low\":37.62,\"average\":38.1,\"close\":38.2,\"trades\":52310,\"quantity\":41250300,\"volume\":1571636430},{\"ticker\":\"VALE3\",\"name\":\"VALE\",\"date\":\"2026-10-30\",\"open\":61.95,\"high\":62.4,\"low\":61.3,\"average\":61.88,\"close\":62,\"trades\":40115,\"quantity\":20987600,\"volume\":1298712688},{\"ticker\":\"XPML11\",\"name\":\"XP MALLS\",\"date\":\"2026-10-30\",\"open\":104.1,\"high\":104.8,\"low\":103.7,\"average\":104.25,\"close\":104.5,\"trades\":6210,\"quantity\":98340,\"volume\":10251945}]\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/sessions/:date/quotes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sessions",
+                    ":date",
+                    "quotes"
+                  ],
+                  "variable": [
+                    {
+                      "key": "date",
+                      "value": "today",
+                      "description": "Trading day (YYYY-MM-DD)."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"date \\\"today\\\" is not a YYYY-MM-DD date\"}\n"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/sessions/:date/quotes",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "sessions",
+                    ":date",
+                    "quotes"
+                  ],
+                  "variable": [
+                    {
+                      "key": "date",
+                      "value": "2026-11-01",
+                      "description": "Trading day (YYYY-MM-DD)."
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"no session on 2026-11-01\"}\n"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

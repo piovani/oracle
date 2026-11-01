@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -249,7 +250,8 @@ func TestCLIFailures(t *testing.T) {
 
 func TestCLIAPIHealth(t *testing.T) {
 	t.Parallel()
-	resp := get(t, startAPI(t)+"/health")
+	_, cfg := newDatabase(t)
+	resp := get(t, startAPI(t, cfg)+"/health")
 	defer resp.Body.Close()
 
 	var body struct {
@@ -269,7 +271,8 @@ func TestCLIAPIHealth(t *testing.T) {
 
 func TestCLIAPISwagger(t *testing.T) {
 	t.Parallel()
-	base := startAPI(t)
+	_, cfg := newDatabase(t)
+	base := startAPI(t, cfg)
 
 	ui := get(t, base+"/swagger/index.html")
 	defer ui.Body.Close()
@@ -293,11 +296,48 @@ func TestCLIAPISwagger(t *testing.T) {
 	}
 }
 
-// startAPI runs `oracle api` on a free port against a new database and returns its base URL
+func TestCLIAPIQuotes(t *testing.T) {
+	t.Parallel()
+	conn, cfg := newDatabase(t)
+	day := fixture.Day(2026, 10, 29)
+	insert(t, conn, []quote.Quote{
+		{Ticker: "PETR4", Name: "PETROBRAS", Spec: "PN      N2", ISIN: "BRPETRACNPR6", Date: day, Close: 38},
+		{Ticker: "PETR4", Name: "PETROBRAS", Spec: "PN      N2", ISIN: "BRPETRACNPR6", Date: day.AddDate(0, 0, 1), Close: 38.5},
+		{Ticker: "XPML11", Name: "XP MALLS", Spec: "CI", ISIN: "BRXPMLCTF000", Date: day, Close: 100},
+	})
+	base := startAPI(t, cfg)
+
+	cases := []struct {
+		path, want string
+	}{
+		{"/tickers", `"ticker":"XPML11"`},
+		{"/tickers/petr4", `"sessions":2,"last_quote":{"ticker":"PETR4","name":"PETROBRAS","date":"2026-10-30"`},
+		{"/tickers/PETR4/quotes?from=2026-10-30&to=2026-10-30", `[{"ticker":"PETR4","name":"PETROBRAS","date":"2026-10-30"`},
+		{"/sessions/latest", `{"date":"2026-10-30","stale":`},
+		{"/sessions/2026-10-29/quotes", `"ticker":"XPML11","name":"XP MALLS","date":"2026-10-29"`},
+	}
+	for _, c := range cases {
+		resp := get(t, base+c.path)
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), c.want) {
+			t.Errorf("%s: got %d %s, want it to contain %s", c.path, resp.StatusCode, body, c.want)
+		}
+	}
+	unknown := get(t, base+"/tickers/ZZZZ3")
+	unknown.Body.Close()
+	if unknown.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown ticker: got %d", unknown.StatusCode)
+	}
+}
+
+// startAPI runs `oracle api` on a free port against the given database and returns its base URL
 // once it answers /health. The server is killed at the end of the test.
-func startAPI(t *testing.T) string {
+func startAPI(t *testing.T, cfg config.DBConfig) string {
 	t.Helper()
-	_, cfg := newDatabase(t)
 	port := freePort(t)
 
 	ctx, cancel := context.WithCancel(t.Context())

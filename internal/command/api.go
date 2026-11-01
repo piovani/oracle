@@ -8,6 +8,7 @@ import (
 	_ "oracle/docs" // swagger spec
 	"oracle/internal/bootstrap"
 	"oracle/internal/handler"
+	"oracle/internal/quote"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -25,13 +26,9 @@ func API(_ []string) {
 	defer app.Close()
 	log.Println("database connected")
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handler.Health)
-	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-
 	server := &http.Server{
 		Addr:              ":" + app.Config.Port,
-		Handler:           mux,
+		Handler:           newMux(quote.NewPostgres(app.DB), time.Now),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -41,4 +38,22 @@ func API(_ []string) {
 	if err := server.ListenAndServe(); err != nil {
 		app.Fatalf("server error: %v", err)
 	}
+}
+
+func newMux(store handler.QuoteReader, now func() time.Time) *http.ServeMux {
+	quotes := handler.NewQuotes(store, now)
+	mux := http.NewServeMux()
+	// Infra
+	mux.HandleFunc("GET /health", handler.Health)
+	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
+
+	// Tickers
+	mux.HandleFunc("GET /tickers", quotes.Tickers)
+	mux.HandleFunc("GET /tickers/{ticker}", quotes.Ticker)
+	mux.HandleFunc("GET /tickers/{ticker}/quotes", quotes.TickerQuotes)
+
+	// Sessions
+	mux.HandleFunc("GET /sessions/latest", quotes.LatestSession)
+	mux.HandleFunc("GET /sessions/{date}/quotes", quotes.SessionQuotes)
+	return mux
 }

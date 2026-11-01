@@ -18,7 +18,9 @@ python3 -I .claude/skills/postman-collection/scripts/api.py test                
 ```
 
 `capture` and `test` build the API from the working tree and run it on a free port against
-`postgres-test` (port 5433), never the `DB_*` database. Use them instead of `curl`: on this
+`postgres-test` (port 5433), never the `DB_*` database. The API reads `oracle_postman`, recreated
+before each run by `scripts/seed` with sample quotes (PETR4 and VALE3 on 2026-10-28..30, XPML11 on
+2026-10-30); add rows there when a new route needs data for its examples. Use them instead of `curl`: on this
 machine `curl -X` gets `400 Bad Request` from the server even when the API is fine.
 
 ## Workflow

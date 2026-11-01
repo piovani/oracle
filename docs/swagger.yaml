@@ -1,5 +1,11 @@
 basePath: /
 definitions:
+  Error:
+    properties:
+      error:
+        example: ticker ZZZZ3 not found
+        type: string
+    type: object
   HealthResponse:
     properties:
       status:
@@ -9,6 +15,125 @@ definitions:
       time:
         description: current server time, UTC, RFC 3339
         example: "2026-11-01T22:07:11Z"
+        type: string
+    type: object
+  Quote:
+    properties:
+      average:
+        description: BRL, volume-weighted
+        example: 38.1
+        type: number
+      close:
+        description: BRL
+        example: 38.2
+        type: number
+      date:
+        description: YYYY-MM-DD
+        example: "2026-10-30"
+        type: string
+      high:
+        description: BRL
+        example: 38.45
+        type: number
+      low:
+        description: BRL
+        example: 37.62
+        type: number
+      name:
+        example: PETROBRAS
+        type: string
+      open:
+        description: BRL
+        example: 37.9
+        type: number
+      quantity:
+        example: 41250300
+        type: integer
+      ticker:
+        example: PETR4
+        type: string
+      trades:
+        description: number of trades
+        example: 52310
+        type: integer
+      volume:
+        description: BRL
+        example: 1.5716324305e+09
+        type: number
+    type: object
+  Session:
+    properties:
+      date:
+        description: YYYY-MM-DD
+        example: "2026-10-30"
+        type: string
+      stale:
+        description: 'more than 4 days old: a sync is missing'
+        example: false
+        type: boolean
+    type: object
+  Ticker:
+    properties:
+      first_session:
+        description: first day with a quote, YYYY-MM-DD
+        example: "2020-01-02"
+        type: string
+      isin:
+        description: ISIN of the latest quote
+        example: BRPETRACNPR6
+        type: string
+      last_session:
+        description: last day with a quote, YYYY-MM-DD
+        example: "2026-10-30"
+        type: string
+      name:
+        description: company name as B3 abbreviates it
+        example: PETROBRAS
+        type: string
+      sessions:
+        description: days with a quote
+        example: 1700
+        type: integer
+      spec:
+        description: 'share type and listing segment: ON, PN, UNT for stocks; CI,
+          DRN... for funds, ETFs and BDRs'
+        example: PN N2
+        type: string
+      ticker:
+        example: PETR4
+        type: string
+    type: object
+  TickerDetail:
+    properties:
+      first_session:
+        description: first day with a quote, YYYY-MM-DD
+        example: "2020-01-02"
+        type: string
+      isin:
+        description: ISIN of the latest quote
+        example: BRPETRACNPR6
+        type: string
+      last_quote:
+        $ref: '#/definitions/Quote'
+      last_session:
+        description: last day with a quote, YYYY-MM-DD
+        example: "2026-10-30"
+        type: string
+      name:
+        description: company name as B3 abbreviates it
+        example: PETROBRAS
+        type: string
+      sessions:
+        description: days with a quote
+        example: 1700
+        type: integer
+      spec:
+        description: 'share type and listing segment: ON, PN, UNT for stocks; CI,
+          DRN... for funds, ETFs and BDRs'
+        example: PN N2
+        type: string
+      ticker:
+        example: PETR4
         type: string
     type: object
 info:
@@ -41,4 +166,155 @@ paths:
       summary: Health check
       tags:
       - health
+  /sessions/{date}/quotes:
+    get:
+      description: Every quote of one trading day, of any spec, in ticker order.
+      parameters:
+      - description: Trading day (YYYY-MM-DD)
+        example: "2026-10-30"
+        in: path
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/Quote'
+            type: array
+        "400":
+          description: date is not a YYYY-MM-DD date
+          schema:
+            $ref: '#/definitions/Error'
+        "404":
+          description: no session on that day (weekend, holiday or not synced)
+          schema:
+            $ref: '#/definitions/Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/Error'
+      summary: List the quotes of a session
+      tags:
+      - quotes
+  /sessions/latest:
+    get:
+      description: 'The last day with quotes in the database, and whether it is stale:
+        older than 4 days, which means a sync is missing.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/Session'
+        "404":
+          description: no quotes stored yet
+          schema:
+            $ref: '#/definitions/Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/Error'
+      summary: Get the latest session
+      tags:
+      - quotes
+  /tickers:
+    get:
+      description: |-
+        Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.
+        Name, spec and ISIN come from the latest quote of each ticker. An empty database answers an empty list.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/Ticker'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/Error'
+      summary: List tickers
+      tags:
+      - quotes
+  /tickers/{ticker}:
+    get:
+      description: Summary of one ticker and its latest quote. The ticker is case-insensitive.
+      parameters:
+      - description: B3 ticker
+        example: PETR4
+        in: path
+        name: ticker
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/TickerDetail'
+        "404":
+          description: no quotes for the ticker
+          schema:
+            $ref: '#/definitions/Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/Error'
+      summary: Get a ticker
+      tags:
+      - quotes
+  /tickers/{ticker}/quotes:
+    get:
+      description: |-
+        Daily quotes of one ticker, in date order. Prices are as traded, not adjusted for splits or dividends.
+        Without from and to, the whole history is returned. A range without sessions answers an empty list.
+      parameters:
+      - description: B3 ticker
+        example: PETR4
+        in: path
+        name: ticker
+        required: true
+        type: string
+      - description: First day, included (YYYY-MM-DD)
+        example: "2026-10-01"
+        in: query
+        name: from
+        type: string
+      - description: Last day, included (YYYY-MM-DD)
+        example: "2026-10-30"
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/Quote'
+            type: array
+        "400":
+          description: from or to is not a YYYY-MM-DD date, or from is after to
+          schema:
+            $ref: '#/definitions/Error'
+        "404":
+          description: no quotes for the ticker
+          schema:
+            $ref: '#/definitions/Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/Error'
+      summary: List the quotes of a ticker
+      tags:
+      - quotes
 swagger: "2.0"

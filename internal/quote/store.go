@@ -2,6 +2,7 @@ package quote
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"oracle/internal/b3"
@@ -20,7 +21,36 @@ type Store interface {
 	SaveFile(ctx context.Context, name string, load func(save func(Quote) error) error) (int, error)
 	// History loads the stocks (specs ON, PN and UNT) quoted since the given day, by ticker and in date order.
 	History(ctx context.Context, since time.Time) (map[string][]Quote, error)
+	// Tickers summarizes every ticker stored, of any spec, in ticker order.
+	Tickers(ctx context.Context) ([]Ticker, error)
+	// Ticker summarizes one ticker, or returns ErrUnknownTicker when it has no quotes.
+	Ticker(ctx context.Context, ticker string) (Ticker, error)
+	// TickerQuotes loads the quotes of one ticker from one day to another, both included, in date order.
+	// A zero day leaves that end open; an unknown ticker has no quotes.
+	TickerQuotes(ctx context.Context, ticker string, from, to time.Time) ([]Quote, error)
+	// Session loads every quote of one day, of any spec, in ticker order.
+	Session(ctx context.Context, day time.Time) ([]Quote, error)
+	// LatestSession is the last day with quotes, or the zero time when there are none.
+	LatestSession(ctx context.Context) (time.Time, error)
 }
+
+// Ticker summarizes the quotes stored for one ticker. Name, Spec and ISIN come from its latest quote.
+type Ticker struct {
+	Ticker   string
+	Name     string
+	Spec     string
+	ISIN     string `gorm:"column:isin"`
+	First    time.Time
+	Last     time.Time
+	Sessions int
+}
+
+// ErrUnknownTicker is returned by Store.Ticker for a ticker without quotes.
+var ErrUnknownTicker = errors.New("unknown ticker")
+
+// StaleAfter is how old the latest session can be before the data is out of date:
+// longer than a weekend plus a holiday means a sync is missing.
+const StaleAfter = 4 * 24 * time.Hour
 
 // Source is where the B3 files come from; *b3.Client in production.
 type Source interface {
