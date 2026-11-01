@@ -28,7 +28,7 @@ linter cannot see the problem (for example across packages or at runtime).
   test, run in parallel and sit behind the `integration` build tag.
 - **Language.** User-facing output (reports, column names, tiers `forte`/`médio`/`fraco`/
   `tendência`) is Portuguese; code, comments, README and docs are English.
-- **API docs.** A route change updates its swag annotations (`make swagger`, committed
+- **API docs.** A route change updates its swag annotations (`make swag`, committed
   `docs/`), the Postman collection `docs/postman-collection.json` and the README.
 
 ## Correctness

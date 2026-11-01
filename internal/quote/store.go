@@ -3,6 +3,7 @@ package quote
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"oracle/internal/b3"
@@ -47,6 +48,22 @@ type Ticker struct {
 
 // ErrUnknownTicker is returned by Store.Ticker for a ticker without quotes.
 var ErrUnknownTicker = errors.New("unknown ticker")
+
+// IsStock reports whether a spec is a stock (ON, PN or UNT), the only series the strategy runs on.
+func IsStock(spec string) bool {
+	return strings.HasPrefix(spec, "ON") || strings.HasPrefix(spec, "PN") || strings.HasPrefix(spec, "UNT")
+}
+
+// LastSession is the latest day in a history, or the zero time when it is empty.
+func LastSession(history map[string][]Quote) time.Time {
+	var latest time.Time
+	for _, bars := range history {
+		if len(bars) > 0 && bars[len(bars)-1].Date.After(latest) {
+			latest = bars[len(bars)-1].Date
+		}
+	}
+	return latest
+}
 
 // StaleAfter is how old the latest session can be before the data is out of date:
 // longer than a weekend plus a holiday means a sync is missing.

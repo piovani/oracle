@@ -3,6 +3,8 @@ package swing
 import (
 	"math"
 	"slices"
+	"strings"
+	"time"
 
 	"oracle/internal/quote"
 	"oracle/internal/yahoo"
@@ -105,12 +107,67 @@ func (p Pick) Loss() float64 { return float64(p.Qty) * (p.MaxEntry - p.Stop) }
 func Analyze(ticker string, bars []quote.Quote, p Params) Analysis {
 	a := Analysis{Ticker: ticker}
 	bars = continuous(bars)
-	n := len(bars)
-	if n < trendLen+volumeLen || medianVolume(bars[n-volumeLen:]) < p.MinVolume {
+	if !p.analyzable(bars) {
 		return a
 	}
 
-	for i := trendLen; i+p.MaxHold < n; {
+	for _, r := range p.play(bars) {
+		a.Trades++
+		a.SumReturn += r.Return
+		if r.Return > 0 {
+			a.Wins++
+		}
+	}
+
+	last := len(bars) - 1
+	if p.Signal(bars, last) {
+		l := p.Levels(bars, last)
+		a.Signal = true
+		a.Close, a.MaxEntry, a.Target, a.Stop = l.Close, l.MaxEntry, l.Target, l.Stop
+	}
+	return a
+}
+
+// Scan analyzes every series whose last bar is on latest, the stocks recommend picks from, in ticker order.
+func Scan(history map[string][]quote.Quote, latest time.Time, p Params) []Analysis {
+	var analyses []Analysis
+	for ticker, bars := range history {
+		if len(bars) > 0 && bars[len(bars)-1].Date.Equal(latest) {
+			analyses = append(analyses, Analyze(ticker, bars, p))
+		}
+	}
+	slices.SortFunc(analyses, func(a, b Analysis) int { return strings.Compare(a.Ticker, b.Ticker) })
+	return analyses
+}
+
+// Record is one trade of a track record, with the days it was planned, entered and closed.
+type Record struct {
+	Trade
+	SignalDay time.Time
+	EntryDay  time.Time
+	ExitDay   time.Time
+}
+
+// TrackRecord lists the trades Analyze counts: every signal of the series after its last split,
+// one trade at a time. It is empty when that part is too short or not liquid enough to analyze.
+func (p Params) TrackRecord(bars []quote.Quote) []Record {
+	bars = continuous(bars)
+	if !p.analyzable(bars) {
+		return nil
+	}
+	return p.play(bars)
+}
+
+// analyzable reports whether a continuous series has the history and the recent volume the rule needs.
+func (p Params) analyzable(bars []quote.Quote) bool {
+	n := len(bars)
+	return n >= trendLen+volumeLen && medianVolume(bars[n-volumeLen:]) >= p.MinVolume
+}
+
+// play simulates every signal that leaves room for a full holding period, skipping signals while a trade is open.
+func (p Params) play(bars []quote.Quote) []Record {
+	var records []Record
+	for i := trendLen; i+p.MaxHold < len(bars); {
 		if !p.Signal(bars, i) {
 			i++
 			continue
@@ -120,21 +177,10 @@ func Analyze(ticker string, bars []quote.Quote, p Params) Analysis {
 			i++
 			continue
 		}
-		a.Trades++
-		a.SumReturn += trade.Return
-		if trade.Return > 0 {
-			a.Wins++
-		}
+		records = append(records, Record{Trade: trade, SignalDay: bars[i].Date, EntryDay: bars[i+1].Date, ExitDay: bars[trade.ExitIdx].Date})
 		i = trade.ExitIdx
 	}
-
-	last := n - 1
-	if p.Signal(bars, last) {
-		l := p.Levels(bars, last)
-		a.Signal = true
-		a.Close, a.MaxEntry, a.Target, a.Stop = l.Close, l.MaxEntry, l.Target, l.Stop
-	}
-	return a
+	return records
 }
 
 // Levels are the order prices planned after the close of bar i.

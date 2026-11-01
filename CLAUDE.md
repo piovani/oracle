@@ -12,7 +12,7 @@ make backtest  [FROM=YYYY-MM-DD CAPITAL= TOP= RISK= COST= RANK=expectancy|rsi CS
 
 go build ./...
 go vet ./...
-make swagger                  # regenerate the OpenAPI spec in docs/ from the swag annotations
+make swag                     # regenerate the OpenAPI spec in docs/ from the swag annotations
 make lint                     # golangci-lint v2, config in .golangci.yml; must report 0 issues
 make lint-fix
 go test ./...
@@ -39,7 +39,7 @@ Data flow:
 
 1. **`internal/b3`** parses B3's fixed-width COTAHIST files (annual/monthly/daily ZIPs), keeping only round-lot cash-market records. `ErrNotFound` means B3 hasn't published that file (holiday, weekend, session not closed) and is skipped, not an error.
 2. **`internal/quote`** stores them behind the `Store` contract; `Postgres` is the GORM implementation (`Quote`, PK ticker+date). `SyncedFile` records every file already loaded, so `SyncHistory` is incremental and idempotent (`SaveFile` is one transaction per file, `ON CONFLICT DO NOTHING`). `History` loads stocks only (spec `ON`/`PN`/`UNT`) as `map[ticker][]Quote` ordered by date. The read methods behind the API (`Tickers`, `Ticker`, `TickerQuotes`, `Session`, `LatestSession`) cover every spec; Postgres passes days as `YYYY-MM-DD` text so they compare as dates. `quote.StaleAfter` (4 days) is the shared rule for an out-of-date database.
-3. **`internal/swing`** is the strategy and the single source of truth for trading logic: `Signal` (close above SMA200 and RSI(2) below `Oversold`), `Levels` (limit entry 0.5 ATR below close, target +1 ATR, stop −2 ATR), `Simulate` (next-day fill, gaps, max hold of 5 sessions, costs), `Analyze` (per-ticker track record) and `Rank` (sizing by capital share and max risk).
+3. **`internal/swing`** is the strategy and the single source of truth for trading logic: `Signal` (close above SMA200 and RSI(2) below `Oversold`), `Levels` (limit entry 0.5 ATR below close, target +1 ATR, stop −2 ATR), `Simulate` (next-day fill, gaps, max hold of 5 sessions, costs), `Analyze` (per-ticker track record) and `Rank` (sizing by capital share and max risk). `Scan` (every series on the latest session) and `TrackRecord` (the dated trades `Analyze` counts) are what the API's strategy routes and `recommend` share.
 4. **`command.Recommend`** runs `swing.Analyze` on every ticker that traded on the last session, tries `swing.Tiers` from strongest to weakest (stops after the first unless `-fill`), fetches analyst targets from **`internal/yahoo`** (unofficial API with cookie+crumb; failure degrades to history-only ranking) and prints the plan.
 5. **`internal/backtest`** replays the same `swing` functions day by day over the whole portfolio with one cash balance. `prepare` builds the calendar, signals and per-ticker track records; `simulate` walks the days; `rank` picks candidates. `summary.go` computes return, drawdown, Sharpe and per-year stats against an equal-weight benchmark.
 
@@ -49,6 +49,6 @@ Invariants to preserve when changing strategy or backtest code:
 - **Splits.** Prices are not adjusted. A day-over-day close ratio outside 0.6–1/0.6 is treated as a split: `swing.Segments` breaks the series (backtest) and `continuous` keeps only the part after the last split (recommend).
 - **Shared logic.** `recommend` and `backtest` must keep calling the same `swing` functions, so backtest results stay representative of the live plan.
 
-The HTTP API (`oracle api`, routes in `internal/command/api.go`, registered in `newMux`; handlers in `internal/handler` read through `handler.QuoteReader`, a subset of `quote.Store`) is documented twice. Swagger: swag annotations (general info on `API`, one block per handler in `internal/handler`) generate `docs/docs.go`, `docs/swagger.json` and `docs/swagger.yaml` with `make swagger` (never edit them by hand; CI fails if they are stale), served at `/swagger/index.html`. Postman: the collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
+The HTTP API (`oracle api`, routes in `internal/command/api.go`, registered in `newMux`; handlers in `internal/handler` read through `handler.QuoteReader`, a subset of `quote.Store`) is documented twice. Swagger: swag annotations (general info on `API`, one block per handler in `internal/handler`) generate `docs/docs.go`, `docs/swagger.json` and `docs/swagger.yaml` with `make swag` (never edit them by hand; CI fails if they are stale), served at `/swagger/index.html`. Postman: the collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
 
 User-facing output (reports, column names, tier labels `forte`/`médio`/`fraco`/`tendência`) is in Portuguese; code, comments and README are in English.

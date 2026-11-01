@@ -14,13 +14,14 @@ The helper script runs from the repository root (Docker must be running for `cap
 ```
 python3 -I .claude/skills/postman-collection/scripts/api.py check                  # routes vs collection, conventions
 python3 -I .claude/skills/postman-collection/scripts/api.py capture GET /x POST /x # real responses, for examples
+python3 -I .claude/skills/postman-collection/scripts/api.py refresh                # re-capture every saved example
 python3 -I .claude/skills/postman-collection/scripts/api.py test                   # check + run the collection
 ```
 
 `capture` and `test` build the API from the working tree and run it on a free port against
 `postgres-test` (port 5433), never the `DB_*` database. The API reads `oracle_postman`, recreated
 before each run by `scripts/seed` with sample quotes (PETR4 and VALE3 on 2026-10-28..30, XPML11 on
-2026-10-30); add rows there when a new route needs data for its examples. Use them instead of `curl`: on this
+2026-10-30, and SWNG3, a synthetic stock of 400 sessions with a `forte` signal on 2026-10-30); add rows there when a new route needs data for its examples. Use them instead of `curl`: on this
 machine `curl -X` gets `400 Bad Request` from the server even when the API is fine.
 
 ## Workflow
@@ -33,6 +34,8 @@ machine `curl -X` gets `400 Bad Request` from the server even when the API is fi
    must handle: the wrong method (Go's mux answers `405` with `Allow`), invalid input,
    missing resources. Examples come from these responses, never from guesses. Volatile
    headers (`Date`, `Content-Length`) are already dropped.
+   After the sample in `scripts/seed` changes, run `refresh` to replay every saved example
+   and update it from the real response; it lists the examples it had to keep.
 3. **Edit the collection** (conventions below). Edit the JSON in place and keep the
    existing items, descriptions and tests; change only what the route change requires.
 4. **Verify.** Run `test`: it must print `check ok` and finish with 0 failed assertions.
@@ -41,7 +44,7 @@ machine `curl -X` gets `400 Bad Request` from the server even when the API is fi
 5. If a route is new, mention it in the "HTTP API" section of `README.md`.
 
 The Swagger spec (`docs/swagger.*`, served at `/swagger/`) documents the same routes and is
-generated from swag annotations on the handlers with `make swagger`. When a route changes,
+generated from swag annotations on the handlers with `make swag`. When a route changes,
 update its annotations and regenerate too, so the two documents agree; `/swagger/` itself is
 not an API route and is not in the collection (`check` skips it).
 

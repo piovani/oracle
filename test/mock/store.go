@@ -70,7 +70,7 @@ func (s *Store) History(_ context.Context, since time.Time) (map[string][]quote.
 	}
 	history := make(map[string][]quote.Quote)
 	for _, q := range s.Quotes {
-		if !q.Date.Before(since) && isStock(q.Spec) {
+		if !q.Date.Before(since) && quote.IsStock(q.Spec) {
 			history[q.Ticker] = append(history[q.Ticker], q)
 		}
 	}
@@ -172,8 +172,4 @@ func (s *Store) LatestSession(context.Context) (time.Time, error) {
 
 func (s *Store) has(q quote.Quote) bool {
 	return slices.ContainsFunc(s.Quotes, func(o quote.Quote) bool { return o.Ticker == q.Ticker && o.Date.Equal(q.Date) })
-}
-
-func isStock(spec string) bool {
-	return strings.HasPrefix(spec, "ON") || strings.HasPrefix(spec, "PN") || strings.HasPrefix(spec, "UNT")
 }

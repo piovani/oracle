@@ -334,6 +334,36 @@ func TestCLIAPIQuotes(t *testing.T) {
 	}
 }
 
+func TestCLIAPIStrategy(t *testing.T) {
+	t.Parallel()
+	conn, cfg := newDatabase(t)
+	today := fixture.Today()
+	insert(t, conn, fixture.Trend("WIN3", 400, today, fixture.Dips(5), fixture.StrongPullback...), fixture.Trend("FLAT3", 400, today, nil))
+	base := startAPI(t, cfg)
+
+	cases := []struct {
+		path, want string
+	}{
+		{"/strategy", `"oversold":10`},
+		{"/strategy/tiers", `{"label":"forte","oversold":10,"rule":"RSI(2) < 10"}`},
+		{"/tickers/WIN3/analysis", `"signal":true`},
+		{"/tickers/WIN3/analysis", `"trades":5,"wins":5,"win_rate":1`},
+		{"/tickers/WIN3/trades", `"signal_date":`},
+		{"/signals", `"signals":[{"ticker":"WIN3"`},
+	}
+	for _, c := range cases {
+		resp := get(t, base+c.path)
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), c.want) {
+			t.Errorf("%s: got %d %s, want it to contain %s", c.path, resp.StatusCode, body, c.want)
+		}
+	}
+}
+
 // startAPI runs `oracle api` on a free port against the given database and returns its base URL
 // once it answers /health. The server is killed at the end of the test.
 func startAPI(t *testing.T, cfg config.DBConfig) string {

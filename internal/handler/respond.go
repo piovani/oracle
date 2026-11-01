@@ -13,7 +13,9 @@ type errorResponse struct {
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // JSON, not HTML: keep "RSI(2) < 10" readable
+	if err := enc.Encode(body); err != nil {
 		log.Printf("failed to write response: %v", err)
 	}
 }

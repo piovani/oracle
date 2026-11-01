@@ -40,8 +40,9 @@ func API(_ []string) {
 	}
 }
 
-func newMux(store handler.QuoteReader, now func() time.Time) *http.ServeMux {
+func newMux(store handler.StrategyReader, now func() time.Time) *http.ServeMux {
 	quotes := handler.NewQuotes(store, now)
+	strategy := handler.NewStrategy(store, now)
 	mux := http.NewServeMux()
 	// Infra
 	mux.HandleFunc("GET /health", handler.Health)
@@ -55,5 +56,10 @@ func newMux(store handler.QuoteReader, now func() time.Time) *http.ServeMux {
 	// Sessions
 	mux.HandleFunc("GET /sessions/latest", quotes.LatestSession)
 	mux.HandleFunc("GET /sessions/{date}/quotes", quotes.SessionQuotes)
+	mux.HandleFunc("GET /strategy", strategy.Params)
+	mux.HandleFunc("GET /strategy/tiers", strategy.Tiers)
+	mux.HandleFunc("GET /tickers/{ticker}/analysis", strategy.Analysis)
+	mux.HandleFunc("GET /tickers/{ticker}/trades", strategy.Trades)
+	mux.HandleFunc("GET /signals", strategy.Signals)
 	return mux
 }

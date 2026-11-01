@@ -75,7 +75,7 @@
               "value": "application/json"
             }
           ],
-          "body": "{\"status\":\"ok\",\"time\":\"2026-11-01T22:07:11Z\"}\n"
+          "body": "{\"status\":\"ok\",\"time\":\"2026-11-01T22:55:39Z\"}\n"
         },
         {
           "name": "405 Method Not Allowed",
@@ -182,7 +182,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"spec\":\"PN N2\",\"isin\":\"BRPETRACNPR6\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3},{\"ticker\":\"VALE3\",\"name\":\"VALE\",\"spec\":\"ON NM\",\"isin\":\"BRVALEACNOR0\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3},{\"ticker\":\"XPML11\",\"name\":\"XP MALLS\",\"spec\":\"CI\",\"isin\":\"BRXPMLCTF000\",\"first_session\":\"2026-10-30\",\"last_session\":\"2026-10-30\",\"sessions\":1}]\n"
+              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"spec\":\"PN N2\",\"isin\":\"BRPETRACNPR6\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3},{\"ticker\":\"SWNG3\",\"name\":\"SWNG3 SA\",\"spec\":\"ON NM\",\"isin\":\"BRSWNG3ACNOR\",\"first_session\":\"2025-09-26\",\"last_session\":\"2026-10-30\",\"sessions\":400},{\"ticker\":\"VALE3\",\"name\":\"VALE\",\"spec\":\"ON NM\",\"isin\":\"BRVALEACNOR0\",\"first_session\":\"2026-10-28\",\"last_session\":\"2026-10-30\",\"sessions\":3},{\"ticker\":\"XPML11\",\"name\":\"XP MALLS\",\"spec\":\"CI\",\"isin\":\"BRXPMLCTF000\",\"first_session\":\"2026-10-30\",\"last_session\":\"2026-10-30\",\"sessions\":1}]\n"
             },
             {
               "name": "405 Method Not Allowed",
@@ -702,7 +702,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"date\":\"2026-10-30\",\"open\":37.9,\"high\":38.45,\"low\":37.62,\"average\":38.1,\"close\":38.2,\"trades\":52310,\"quantity\":41250300,\"volume\":1571636430},{\"ticker\":\"VALE3\",\"name\":\"VALE\",\"date\":\"2026-10-30\",\"open\":61.95,\"high\":62.4,\"low\":61.3,\"average\":61.88,\"close\":62,\"trades\":40115,\"quantity\":20987600,\"volume\":1298712688},{\"ticker\":\"XPML11\",\"name\":\"XP MALLS\",\"date\":\"2026-10-30\",\"open\":104.1,\"high\":104.8,\"low\":103.7,\"average\":104.25,\"close\":104.5,\"trades\":6210,\"quantity\":98340,\"volume\":10251945}]\n"
+              "body": "[{\"ticker\":\"PETR4\",\"name\":\"PETROBRAS\",\"date\":\"2026-10-30\",\"open\":37.9,\"high\":38.45,\"low\":37.62,\"average\":38.1,\"close\":38.2,\"trades\":52310,\"quantity\":41250300,\"volume\":1571636430},{\"ticker\":\"SWNG3\",\"name\":\"SWNG3 SA\",\"date\":\"2026-10-30\",\"open\":27.26,\"high\":27.31,\"low\":26.86,\"average\":26.92,\"close\":26.92,\"trades\":1000,\"quantity\":1000000,\"volume\":100000000},{\"ticker\":\"VALE3\",\"name\":\"VALE\",\"date\":\"2026-10-30\",\"open\":61.95,\"high\":62.4,\"low\":61.3,\"average\":61.88,\"close\":62,\"trades\":40115,\"quantity\":20987600,\"volume\":1298712688},{\"ticker\":\"XPML11\",\"name\":\"XP MALLS\",\"date\":\"2026-10-30\",\"open\":104.1,\"high\":104.8,\"low\":103.7,\"average\":104.25,\"close\":104.5,\"trades\":6210,\"quantity\":98340,\"volume\":10251945}]\n"
             },
             {
               "name": "400 Bad Request",
@@ -773,6 +773,713 @@
                 }
               ],
               "body": "{\"error\":\"no session on 2026-11-01\"}\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Strategy",
+      "description": "The swing rule of `internal/swing`, the same functions `oracle recommend` and `oracle backtest` call. Every route is a read-only `GET` that answers JSON.",
+      "item": [
+        {
+          "name": "Get the strategy parameters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/strategy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "strategy"
+              ]
+            },
+            "description": "The parameters of the swing rule used by `oracle recommend` and `oracle backtest`.\n\nA signal is a close above the 200-day average with RSI(2) below `oversold`. After the signal close, the plan is a limit buy `entry_atr` ATRs below the close, a target `target_atr` ATRs above it and a stop `stop_atr` ATRs below it (ATR of 14 sessions), selling at the close after `max_hold` sessions otherwise. `cost_pct` is charged per side, in percent. A stock is eligible with at least `min_trades` trades and positive expectancy, and is analyzed only with a median volume of `min_volume` BRL. `warmup` is the number of sessions before the first signal.\n\nThe `oversold` shown is the strongest tier; see *List the signal tiers*. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"has every parameter\", function () {",
+                  "  pm.expect(pm.response.json()).to.have.all.keys(\"entry_atr\", \"target_atr\", \"stop_atr\", \"max_hold\", \"oversold\", \"cost_pct\", \"min_trades\", \"min_volume\", \"warmup\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/strategy",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "strategy"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"entry_atr\":0.5,\"target_atr\":1,\"stop_atr\":2,\"max_hold\":5,\"oversold\":10,\"cost_pct\":0.03,\"min_trades\":5,\"min_volume\":5000000,\"warmup\":200}\n"
+            },
+            {
+              "name": "405 Method Not Allowed",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/strategy",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "strategy"
+                  ]
+                }
+              },
+              "status": "Method Not Allowed",
+              "code": 405,
+              "_postman_previewlanguage": "text",
+              "header": [
+                {
+                  "key": "Allow",
+                  "value": "GET, HEAD"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "text/plain; charset=utf-8"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                }
+              ],
+              "body": "Method Not Allowed\n"
+            }
+          ]
+        },
+        {
+          "name": "List the signal tiers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/strategy/tiers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "strategy",
+                "tiers"
+              ]
+            },
+            "description": "The signal levels, strongest first. `oracle recommend` stops at the first tier, or goes down the list with `-fill` until it has enough stocks.\n\n`oversold` is the RSI(2) the close must be below; `101` (`tendência`) means no pullback is required. Labels and rules are in Portuguese, as the CLI prints them. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"tiers from strongest to weakest\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.map(function (t) { return t.label; })).to.eql([\"forte\", \"médio\", \"fraco\", \"tendência\"]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/strategy/tiers",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "strategy",
+                    "tiers"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "[{\"label\":\"forte\",\"oversold\":10,\"rule\":\"RSI(2) < 10\"},{\"label\":\"médio\",\"oversold\":30,\"rule\":\"RSI(2) < 30\"},{\"label\":\"fraco\",\"oversold\":50,\"rule\":\"RSI(2) < 50\"},{\"label\":\"tendência\",\"oversold\":101,\"rule\":\"sem recuo\"}]\n"
+            },
+            {
+              "name": "405 Method Not Allowed",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/strategy/tiers",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "strategy",
+                    "tiers"
+                  ]
+                }
+              },
+              "status": "Method Not Allowed",
+              "code": 405,
+              "_postman_previewlanguage": "text",
+              "header": [
+                {
+                  "key": "Allow",
+                  "value": "GET, HEAD"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "text/plain; charset=utf-8"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                }
+              ],
+              "body": "Method Not Allowed\n"
+            }
+          ]
+        },
+        {
+          "name": "Analyze a stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickers/:ticker/analysis?tier=forte&years=3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickers",
+                ":ticker",
+                "analysis"
+              ],
+              "query": [
+                {
+                  "key": "tier",
+                  "value": "forte",
+                  "description": "Signal tier: forte (default), médio, fraco or tendência; accents are optional (medio, tendencia)."
+                },
+                {
+                  "key": "years",
+                  "value": "3",
+                  "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                }
+              ],
+              "variable": [
+                {
+                  "key": "ticker",
+                  "value": "SWNG3",
+                  "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                }
+              ]
+            },
+            "description": "Runs the rule on the last `years` of one stock: whether its latest close (`as_of`) is a signal for the `tier`, the order prices for the next session (`levels`, `null` without a signal) and its track record. `win_rate`, `avg_return` and `expectancy` are fractions (`0.01` = 1%), net of costs; `expectancy` shrinks the average toward 0 for short records and is what `oracle recommend` ranks by.\n\nRuns `internal/swing`, the same functions `oracle recommend` calls, so the numbers match the CLI. Only the part of the series after the last split counts (prices are not adjusted); with fewer than 260 sessions there, or a median volume below `min_volume`, the track record is empty and there is no signal.\n\nErrors: `400` for an unknown `tier` or `years` outside 1–30; `404` for a ticker without quotes in the period; `422` when the ticker is not a stock (real estate funds, ETFs and BDRs are not analyzed). Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"analysis of the stock\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.all.keys(\"ticker\", \"name\", \"tier\", \"as_of\", \"signal\", \"levels\", \"trades\", \"wins\", \"win_rate\", \"avg_return\", \"expectancy\", \"eligible\");",
+                  "  pm.expect(body.as_of).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  pm.expect(body.signal).to.eql(body.levels !== null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/analysis",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "analysis"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "swng3",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"ticker\":\"SWNG3\",\"name\":\"SWNG3 SA\",\"tier\":\"forte\",\"as_of\":\"2026-10-30\",\"signal\":true,\"levels\":{\"close\":26.92,\"max_entry\":26.8,\"target\":27.16,\"stop\":26.45},\"trades\":5,\"wins\":5,\"win_rate\":1,\"avg_return\":0.0149,\"expectancy\":0.005,\"eligible\":true}\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/analysis?tier=forte2",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "analysis"
+                  ],
+                  "query": [
+                    {
+                      "key": "tier",
+                      "value": "forte2",
+                      "description": "Signal tier: forte (default), médio, fraco or tendência; accents are optional (medio, tendencia)."
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "SWNG3",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"unknown tier \\\"forte2\\\": use forte, médio, fraco or tendência\"}\n"
+            },
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/analysis",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "analysis"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "ZZZZ3",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"ticker ZZZZ3 not found\"}\n"
+            },
+            {
+              "name": "422 Unprocessable Entity",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/analysis",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "analysis"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "XPML11",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"XPML11 is not a stock (spec CI): the strategy runs only on ON, PN and UNT\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "List the simulated trades of a stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickers/:ticker/trades?tier=forte&years=3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickers",
+                ":ticker",
+                "trades"
+              ],
+              "query": [
+                {
+                  "key": "tier",
+                  "value": "forte",
+                  "description": "Signal tier: forte (default), médio, fraco or tendência; accents are optional (medio, tendencia)."
+                },
+                {
+                  "key": "years",
+                  "value": "3",
+                  "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                }
+              ],
+              "variable": [
+                {
+                  "key": "ticker",
+                  "value": "SWNG3",
+                  "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                }
+              ]
+            },
+            "description": "The trades behind the track record of *Analyze a stock*, in date order: each signal (`signal_date`) is bought with the limit order the next session (`entry_date`) and sold at the target, the stop or the close of the last holding session (`exit_date`). `entry` and `exit` are BRL; `return` is a fraction net of costs. Signals while a trade is open are skipped.\n\nRuns `internal/swing`, the same functions `oracle recommend` calls, so the numbers match the CLI. Only the part of the series after the last split counts (prices are not adjusted); with fewer than 260 sessions there, or a median volume below `min_volume`, the track record is empty and there is no signal. In that case the list is `[]`.\n\nErrors: `400` for an unknown `tier` or `years` outside 1–30; `404` for a ticker without quotes in the period; `422` when the ticker is not a stock (real estate funds, ETFs and BDRs are not analyzed). Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"trades in date order\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an(\"array\");",
+                  "  body.forEach(function (tr, i) {",
+                  "    pm.expect(tr).to.have.all.keys(\"signal_date\", \"entry_date\", \"exit_date\", \"entry\", \"exit\", \"return\");",
+                  "    pm.expect(tr.signal_date < tr.entry_date && tr.entry_date <= tr.exit_date).to.be.true;",
+                  "    if (i > 0) pm.expect(body[i - 1].exit_date <= tr.signal_date).to.be.true;",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/trades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "trades"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "SWNG3",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "[{\"signal_date\":\"2026-05-04\",\"entry_date\":\"2026-05-05\",\"exit_date\":\"2026-05-05\",\"entry\":18.29,\"exit\":18.62,\"return\":0.0173},{\"signal_date\":\"2026-06-03\",\"entry_date\":\"2026-06-04\",\"exit_date\":\"2026-06-04\",\"entry\":19.85,\"exit\":20.18,\"return\":0.0159},{\"signal_date\":\"2026-07-03\",\"entry_date\":\"2026-07-04\",\"exit_date\":\"2026-07-04\",\"entry\":21.41,\"exit\":21.74,\"return\":0.0147},{\"signal_date\":\"2026-08-02\",\"entry_date\":\"2026-08-03\",\"exit_date\":\"2026-08-03\",\"entry\":22.97,\"exit\":23.3,\"return\":0.0137},{\"signal_date\":\"2026-09-01\",\"entry_date\":\"2026-09-02\",\"exit_date\":\"2026-09-02\",\"entry\":24.53,\"exit\":24.86,\"return\":0.0128}]\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/trades?years=0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "trades"
+                  ],
+                  "query": [
+                    {
+                      "key": "years",
+                      "value": "0",
+                      "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "SWNG3",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"years \\\"0\\\" must be a whole number from 1 to 30\"}\n"
+            },
+            {
+              "name": "422 Unprocessable Entity",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/tickers/:ticker/trades",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "tickers",
+                    ":ticker",
+                    "trades"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ticker",
+                      "value": "XPML11",
+                      "description": "B3 ticker of a stock (ON, PN or UNT), case-insensitive."
+                    }
+                  ]
+                }
+              },
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"XPML11 is not a stock (spec CI): the strategy runs only on ON, PN and UNT\"}\n"
+            }
+          ]
+        },
+        {
+          "name": "List today's signals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/signals?tier=forte&years=3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "signals"
+              ],
+              "query": [
+                {
+                  "key": "tier",
+                  "value": "forte",
+                  "description": "Signal tier: forte (default), médio, fraco or tendência; accents are optional (medio, tendencia)."
+                },
+                {
+                  "key": "years",
+                  "value": "3",
+                  "description": "Years of history, 1 to 30 (default 3, as oracle recommend)."
+                }
+              ]
+            },
+            "description": "Every stock traded on the latest session (`session`) whose close fires the rule of the `tier`, each with the fields of *Analyze a stock*: the candidates `oracle recommend` picks from, before analyst targets and position sizing. Eligible stocks come first, then by expectancy. `[]` in `signals` means no signal in that tier.\n\nLoads the history of every stock for `years`, so it is the slowest route. Errors: `400` for an unknown `tier` or `years` outside 1–30; `404` when no stock quotes are stored in the period. Read only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"body is JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.eql(\"application/json\");",
+                  "});",
+                  "pm.test(\"signals of the latest session\", function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.session).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+                  "  pm.expect(body.signals).to.be.an(\"array\");",
+                  "  body.signals.forEach(function (s) {",
+                  "    pm.expect(s.signal).to.be.true;",
+                  "    pm.expect(s.as_of).to.eql(body.session);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/signals",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "signals"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"session\":\"2026-10-30\",\"tier\":\"forte\",\"rule\":\"RSI(2) < 10\",\"signals\":[{\"ticker\":\"SWNG3\",\"name\":\"SWNG3 SA\",\"tier\":\"forte\",\"as_of\":\"2026-10-30\",\"signal\":true,\"levels\":{\"close\":26.92,\"max_entry\":26.8,\"target\":27.16,\"stop\":26.45},\"trades\":5,\"wins\":5,\"win_rate\":1,\"avg_return\":0.0149,\"expectancy\":0.005,\"eligible\":true}]}\n"
+            },
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/signals?tier=x",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "signals"
+                  ],
+                  "query": [
+                    {
+                      "key": "tier",
+                      "value": "x",
+                      "description": "Signal tier: forte (default), médio, fraco or tendência; accents are optional (medio, tendencia)."
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\"error\":\"unknown tier \\\"x\\\": use forte, médio, fraco or tendência\"}\n"
             }
           ]
         }

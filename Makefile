@@ -1,4 +1,4 @@
-.PHONY: sync recommend backtest test test-db test-db-down test-integration coverage swagger lint lint-fix docker-build
+.PHONY: sync recommend backtest test test-db test-db-down test-integration coverage swag lint lint-fix docker-build
 
 sync:
 	go run ./cmd/oracle sync $(if $(SINCE),-since $(SINCE))
@@ -38,7 +38,7 @@ coverage: test-db
 
 SWAG_VERSION := v1.16.6
 
-swagger:
+swag:
 	go run github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION) init -g api.go -d internal/command,internal/handler -o docs --outputTypes go,json,yaml
 	go run github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION) fmt -g api.go -d internal/command,internal/handler
 

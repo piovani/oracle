@@ -124,6 +124,109 @@ const docTemplate = `{
                 }
             }
         },
+        "/signals": {
+            "get": {
+                "description": "Every stock traded on the latest session whose close fires the rule of the tier, with its order prices and track record: the candidates oracle recommend picks from, before analyst targets and position sizing.\nEligible stocks come first, then by expectancy. An empty list means no signal in that tier.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "strategy"
+                ],
+                "summary": "List today's signals",
+                "parameters": [
+                    {
+                        "enum": [
+                            "forte",
+                            "médio",
+                            "fraco",
+                            "tendência"
+                        ],
+                        "type": "string",
+                        "description": "Signal tier (default forte)",
+                        "name": "tier",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 30,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Years of history (default 3, at most 30)",
+                        "name": "years",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Signals"
+                        }
+                    },
+                    "400": {
+                        "description": "unknown tier or years out of range",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no stock quotes stored in the period",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/strategy": {
+            "get": {
+                "description": "The parameters of the swing rule that oracle recommend and oracle backtest use. Prices are set from the ATR (average true range of 14 sessions) of the signal day.\nA signal is a close above the 200-day average with RSI(2) below oversold. The tiers lower the bar for oversold; see /strategy/tiers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "strategy"
+                ],
+                "summary": "Get the strategy parameters",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Strategy"
+                        }
+                    }
+                }
+            }
+        },
+        "/strategy/tiers": {
+            "get": {
+                "description": "The signal levels, from strongest to weakest. oracle recommend stops at the first that fills the list, or goes down the tiers with -fill.\nLabels are in Portuguese, as the CLI prints them; the tier query parameter also accepts them without accents (medio, tendencia).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "strategy"
+                ],
+                "summary": "List the signal tiers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Tier"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/tickers": {
             "get": {
                 "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\nName, spec and ISIN come from the latest quote of each ticker. An empty database answers an empty list.",
@@ -182,6 +285,80 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "no quotes for the ticker",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/tickers/{ticker}/analysis": {
+            "get": {
+                "description": "Runs the rule on the last years of one stock, as oracle recommend does for every stock: whether there is a signal on its latest session, the order prices, and its track record.\nOnly the part of the series after the last split counts. Without at least 260 sessions there, or with a median volume below min_volume, the track record is empty and there is no signal.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "strategy"
+                ],
+                "summary": "Analyze a stock",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "PETR4",
+                        "description": "B3 ticker of a stock (ON, PN or UNT)",
+                        "name": "ticker",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "forte",
+                            "médio",
+                            "fraco",
+                            "tendência"
+                        ],
+                        "type": "string",
+                        "description": "Signal tier (default forte)",
+                        "name": "tier",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 30,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Years of history (default 3, at most 30)",
+                        "name": "years",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Analysis"
+                        }
+                    },
+                    "400": {
+                        "description": "unknown tier or years out of range",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no quotes for the ticker in the period",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "422": {
+                        "description": "the ticker is not a stock",
                         "schema": {
                             "$ref": "#/definitions/Error"
                         }
@@ -259,9 +436,150 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/tickers/{ticker}/trades": {
+            "get": {
+                "description": "The trades behind the track record of /tickers/{ticker}/analysis, in date order: each signal is bought with a limit order the next session and sold at the target, the stop or the close of the last holding session.\nEmpty when the series after the last split is too short or not liquid enough.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "strategy"
+                ],
+                "summary": "List the simulated trades of a stock",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "PETR4",
+                        "description": "B3 ticker of a stock (ON, PN or UNT)",
+                        "name": "ticker",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "forte",
+                            "médio",
+                            "fraco",
+                            "tendência"
+                        ],
+                        "type": "string",
+                        "description": "Signal tier (default forte)",
+                        "name": "tier",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 30,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Years of history (default 3, at most 30)",
+                        "name": "years",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Trade"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "unknown tier or years out of range",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "no quotes for the ticker in the period",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "422": {
+                        "description": "the ticker is not a stock",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "Analysis": {
+            "type": "object",
+            "properties": {
+                "as_of": {
+                    "description": "last session analyzed, YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "avg_return": {
+                    "description": "mean return per trade, net of costs (0.01 = 1%)",
+                    "type": "number",
+                    "example": 0.0123
+                },
+                "eligible": {
+                    "description": "signal, at least min_trades trades and positive expectancy",
+                    "type": "boolean",
+                    "example": true
+                },
+                "expectancy": {
+                    "description": "return per trade shrunk toward 0 for short records; ranks recommend",
+                    "type": "number",
+                    "example": 0.0067
+                },
+                "levels": {
+                    "description": "order prices for the next session, null without a signal",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/Levels"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "example": "PETROBRAS"
+                },
+                "signal": {
+                    "description": "the rule fires on the as_of close",
+                    "type": "boolean",
+                    "example": true
+                },
+                "ticker": {
+                    "type": "string",
+                    "example": "PETR4"
+                },
+                "tier": {
+                    "type": "string",
+                    "example": "forte"
+                },
+                "trades": {
+                    "description": "trades in the track record",
+                    "type": "integer",
+                    "example": 12
+                },
+                "win_rate": {
+                    "description": "wins / trades, 0 to 1",
+                    "type": "number",
+                    "example": 0.75
+                },
+                "wins": {
+                    "type": "integer",
+                    "example": 9
+                }
+            }
+        },
         "Error": {
             "type": "object",
             "properties": {
@@ -283,6 +601,31 @@ const docTemplate = `{
                     "description": "current server time, UTC, RFC 3339",
                     "type": "string",
                     "example": "2026-11-01T22:07:11Z"
+                }
+            }
+        },
+        "Levels": {
+            "type": "object",
+            "properties": {
+                "close": {
+                    "description": "signal close, BRL",
+                    "type": "number",
+                    "example": 38.2
+                },
+                "max_entry": {
+                    "description": "limit buy price for the next session, BRL",
+                    "type": "number",
+                    "example": 37.71
+                },
+                "stop": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 36.24
+                },
+                "target": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 39.18
                 }
             }
         },
@@ -355,6 +698,81 @@ const docTemplate = `{
                     "description": "more than 4 days old: a sync is missing",
                     "type": "boolean",
                     "example": false
+                }
+            }
+        },
+        "Signals": {
+            "type": "object",
+            "properties": {
+                "rule": {
+                    "type": "string",
+                    "example": "RSI(2) \u003c 10"
+                },
+                "session": {
+                    "description": "latest session, YYYY-MM-DD",
+                    "type": "string",
+                    "example": "2026-10-30"
+                },
+                "signals": {
+                    "description": "eligible first, then by expectancy",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Analysis"
+                    }
+                },
+                "tier": {
+                    "type": "string",
+                    "example": "forte"
+                }
+            }
+        },
+        "Strategy": {
+            "type": "object",
+            "properties": {
+                "cost_pct": {
+                    "description": "cost per side, in percent",
+                    "type": "number",
+                    "example": 0.03
+                },
+                "entry_atr": {
+                    "description": "limit buy this many ATRs below the signal close",
+                    "type": "number",
+                    "example": 0.5
+                },
+                "max_hold": {
+                    "description": "sessions before selling at the close",
+                    "type": "integer",
+                    "example": 5
+                },
+                "min_trades": {
+                    "description": "trades in the track record to be eligible",
+                    "type": "integer",
+                    "example": 5
+                },
+                "min_volume": {
+                    "description": "median daily volume in BRL over 60 sessions",
+                    "type": "number",
+                    "example": 5000000
+                },
+                "oversold": {
+                    "description": "RSI(2) below this is a signal, in the strongest tier",
+                    "type": "number",
+                    "example": 10
+                },
+                "stop_atr": {
+                    "description": "stop this many ATRs below the signal close",
+                    "type": "number",
+                    "example": 2
+                },
+                "target_atr": {
+                    "description": "sell this many ATRs above the signal close",
+                    "type": "number",
+                    "example": 1
+                },
+                "warmup": {
+                    "description": "sessions before the first signal (the SMA200)",
+                    "type": "integer",
+                    "example": 200
                 }
             }
         },
@@ -436,6 +854,58 @@ const docTemplate = `{
                 "ticker": {
                     "type": "string",
                     "example": "PETR4"
+                }
+            }
+        },
+        "Tier": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "example": "forte"
+                },
+                "oversold": {
+                    "description": "RSI(2) must be below this; 101 means no pullback is required",
+                    "type": "number",
+                    "example": 10
+                },
+                "rule": {
+                    "type": "string",
+                    "example": "RSI(2) \u003c 10"
+                }
+            }
+        },
+        "Trade": {
+            "type": "object",
+            "properties": {
+                "entry": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 35.1
+                },
+                "entry_date": {
+                    "description": "session the limit order filled",
+                    "type": "string",
+                    "example": "2026-03-13"
+                },
+                "exit": {
+                    "description": "BRL",
+                    "type": "number",
+                    "example": 35.92
+                },
+                "exit_date": {
+                    "type": "string",
+                    "example": "2026-03-17"
+                },
+                "return": {
+                    "description": "net of costs (0.01 = 1%)",
+                    "type": "number",
+                    "example": 0.0228
+                },
+                "signal_date": {
+                    "description": "close the plan was made after",
+                    "type": "string",
+                    "example": "2026-03-12"
                 }
             }
         }

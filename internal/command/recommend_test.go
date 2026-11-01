@@ -140,15 +140,6 @@ func TestEstimatesDisabled(t *testing.T) {
 	}
 }
 
-func TestLastSession(t *testing.T) {
-	if got := lastSession(market()); !got.Equal(lastDay) {
-		t.Errorf("got %v, want %v", got, lastDay)
-	}
-	if got := lastSession(nil); !got.IsZero() {
-		t.Errorf("empty history: got %v", got)
-	}
-}
-
 func TestAnalyzeTierSkipsStocksOffTheLastSession(t *testing.T) {
 	analyses, s := analyzeTier(market(), lastDay, swing.DefaultParams(), swing.Tiers[0])
 	tickers := make([]string, 0, len(analyses))

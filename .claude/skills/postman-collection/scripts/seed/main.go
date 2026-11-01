@@ -11,6 +11,7 @@ import (
 	"oracle/config"
 	"oracle/internal/quote"
 	"oracle/pkg/db"
+	"oracle/test/fixture"
 )
 
 const name = "oracle_postman"
@@ -60,7 +61,8 @@ func sample() []quote.Quote {
 			Trades: trades, Quantity: qty, Volume: float64(qty) * avg,
 		}
 	}
-	return []quote.Quote{
+	// SWNG3 is synthetic: 400 sessions of uptrend with 5 winning pullbacks and a "forte" signal on the last day.
+	return append(fixture.Trend("SWNG3", 400, day(30), fixture.Dips(5), fixture.StrongPullback...), []quote.Quote{
 		bar("PETR4", "PETROBRAS", "PN      N2", "BRPETRACNPR6", 28, 37.40, 37.95, 37.10, 37.58, 37.80, 48120, 38904100),
 		bar("PETR4", "PETROBRAS", "PN      N2", "BRPETRACNPR6", 29, 37.80, 38.30, 37.55, 37.96, 38.05, 50233, 40112800),
 		bar("PETR4", "PETROBRAS", "PN      N2", "BRPETRACNPR6", 30, 37.90, 38.45, 37.62, 38.10, 38.20, 52310, 41250300),
@@ -68,5 +70,5 @@ func sample() []quote.Quote {
 		bar("VALE3", "VALE", "ON      NM", "BRVALEACNOR0", 29, 61.50, 62.10, 61.05, 61.62, 61.90, 41022, 22310700),
 		bar("VALE3", "VALE", "ON      NM", "BRVALEACNOR0", 30, 61.95, 62.40, 61.30, 61.88, 62.00, 40115, 20987600),
 		bar("XPML11", "XP MALLS", "CI", "BRXPMLCTF000", 30, 104.10, 104.80, 103.70, 104.25, 104.50, 6210, 98340),
-	}
+	}...)
 }

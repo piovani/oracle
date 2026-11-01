@@ -61,7 +61,7 @@ func Recommend(args []string) {
 		app.Fatalf("failed to load history: %v", err)
 	}
 
-	latest := lastSession(history)
+	latest := quote.LastSession(history)
 	if latest.IsZero() {
 		app.Fatalf("no quotes in the database, run `make sync` first")
 	}
@@ -73,16 +73,6 @@ func Recommend(args []string) {
 	estimates := newEstimates(ctx, !opts.noEstimates)
 	rows, summaries := buildPlan(ctx, history, latest, params, estimates, opts)
 	printPlan(rows, summaries, params, latest, opts)
-}
-
-func lastSession(history map[string][]quote.Quote) time.Time {
-	var latest time.Time
-	for _, bars := range history {
-		if day := bars[len(bars)-1].Date; day.After(latest) {
-			latest = day
-		}
-	}
-	return latest
 }
 
 // buildPlan tries the signal levels from strongest to weakest. It stops at the first level,
@@ -122,16 +112,11 @@ func buildPlan(ctx context.Context, history map[string][]quote.Quote, latest tim
 // analyzeTier runs the rule on every stock traded on the last session.
 func analyzeTier(history map[string][]quote.Quote, latest time.Time, params swing.Params, tier swing.Tier) ([]swing.Analysis, summary) {
 	s := summary{tier: tier}
-	var analyses []swing.Analysis
-	for ticker, bars := range history {
-		if !bars[len(bars)-1].Date.Equal(latest) {
-			continue
-		}
-		a := swing.Analyze(ticker, bars, params)
+	analyses := swing.Scan(history, latest, params)
+	for _, a := range analyses {
 		s.trades += a.Trades
 		s.wins += a.Wins
 		s.sum += a.SumReturn
-		analyses = append(analyses, a)
 	}
 	return analyses, s
 }

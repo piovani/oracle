@@ -5,13 +5,19 @@ Run from the repository root:
 
     python3 -I .claude/skills/postman-collection/scripts/api.py check
     python3 -I .claude/skills/postman-collection/scripts/api.py capture GET /health POST /health
+    python3 -I .claude/skills/postman-collection/scripts/api.py refresh
     python3 -I .claude/skills/postman-collection/scripts/api.py test
 
 check    compares the routes registered in internal/command/api.go with the collection and
          checks every request has a description, tests and saved examples. No server needed.
 capture  starts the API against postgres-test, seeded with the sample quotes of scripts/seed
-         (PETR4 and VALE3 on 2026-10-28..30, XPML11 on 2026-10-30), and prints the real response
+         (PETR4 and VALE3 on 2026-10-28..30, XPML11 on 2026-10-30, and SWNG3,
+         a synthetic stock of 400 sessions with a "forte" signal on 2026-10-30), and prints the real response
          of each METHOD PATH, to copy into saved examples.
+refresh  starts the API like capture and replays every saved example of the collection, replacing
+         its status, headers and body with the real response when the status code still matches.
+         Examples whose code no longer matches (or that need state the sample can't give, like an
+         empty database) are kept and listed.
 test     runs check, then starts the API and runs the collection with the Postman CLI.
 
 The API is a freshly built binary on a free port, pointed at the postgres-test service of
@@ -29,6 +35,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 COLLECTION = "docs/postman-collection.json"
@@ -173,26 +180,58 @@ class Server:
             subprocess.run(["make", "test-db-down"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def call(base_url, method, path):
+    req = urllib.request.Request(base_url + path, method=method)
+    try:
+        resp = urllib.request.urlopen(req, timeout=10)
+    except urllib.error.HTTPError as e:
+        resp = e
+    return {
+        "code": resp.status,
+        "status": resp.reason,
+        "header": [{"key": k, "value": v} for k, v in resp.headers.items() if k.lower() not in VOLATILE],
+        "body": resp.read().decode("utf-8", "replace"),
+    }
+
+
+def example_path(url):
+    """The path and query of a saved example, with its :variables filled in."""
+    if isinstance(url, str):
+        return url.replace("{{baseUrl}}", "")
+    path = url["raw"].replace("{{baseUrl}}", "").split("?", 1)[0]
+    for var in url.get("variable", []):
+        path = path.replace(":" + var["key"], urllib.parse.quote(var["value"]))
+    query = [(q["key"], q["value"]) for q in url.get("query", []) if not q.get("disabled")]
+    return path + ("?" + urllib.parse.urlencode(query) if query else "")
+
+
+def refresh():
+    collection = json.load(open(COLLECTION, encoding="utf-8"))
+    updated, kept = 0, []
+    with Server() as server:
+        for item in items(collection):
+            for ex in item.get("response", []):
+                req = ex["originalRequest"]
+                path = example_path(req["url"])
+                got = call(server.base_url, req.get("method", "GET"), path)
+                if got["code"] != ex.get("code"):
+                    kept.append(f'{item["name"]} / {ex["name"]}: {req.get("method", "GET")} {path} answered {got["code"]}')
+                    continue
+                ex["status"], ex["header"], ex["body"] = got["status"], got["header"], got["body"]
+                updated += 1
+    with open(COLLECTION, "w", encoding="utf-8") as f:
+        f.write(json.dumps(collection, indent=2, ensure_ascii=False) + "\n")
+    print(f"refreshed {updated} example(s)")
+    for k in kept:
+        print(f"kept: {k}")
+
+
 def capture(args):
     if not args or len(args) % 2:
         fail("capture takes pairs of METHOD PATH, e.g. capture GET /health POST /health")
     pairs = [(args[i].upper(), args[i + 1]) for i in range(0, len(args), 2)]
     with Server() as server:
-        results = []
-        for method, path in pairs:
-            req = urllib.request.Request(server.base_url + path, method=method)
-            try:
-                resp = urllib.request.urlopen(req, timeout=10)
-            except urllib.error.HTTPError as e:
-                resp = e
-            body = resp.read().decode("utf-8", "replace")
-            results.append({
-                "request": f"{method} {path}",
-                "code": resp.status,
-                "status": resp.reason,
-                "header": [{"key": k, "value": v} for k, v in resp.headers.items() if k.lower() not in VOLATILE],
-                "body": body,
-            })
+        results = [{"request": f"{method} {path}", **call(server.base_url, method, path)} for method, path in pairs]
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
 
@@ -213,6 +252,8 @@ def main():
         check()
     elif cmd == "capture":
         capture(args)
+    elif cmd == "refresh":
+        refresh()
     elif cmd == "test":
         test()
     else:

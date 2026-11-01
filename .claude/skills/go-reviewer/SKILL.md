@@ -34,7 +34,7 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 ```
 
 When Docker is running (`docker info` succeeds), also run `make coverage` (unit + integration,
-must stay ≥ 90%). If routes or swag annotations changed, run `make swagger` and check that
+must stay ≥ 90%). If routes or swag annotations changed, run `make swag` and check that
 `git status --porcelain -- docs/` shows nothing new; if `internal/command/api.go` or
 `internal/handler` changed, run
 `python3 -I .claude/skills/postman-collection/scripts/api.py check`.

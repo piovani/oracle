@@ -100,7 +100,7 @@ func (h *Quotes) Tickers(w http.ResponseWriter, r *http.Request) {
 //	@Failure		500		{object}	errorResponse
 //	@Router			/tickers/{ticker} [get]
 func (h *Quotes) Ticker(w http.ResponseWriter, r *http.Request) {
-	ticker, ok := h.ticker(w, r)
+	ticker, ok := loadTicker(w, r, h.store, pathTicker(r))
 	if !ok {
 		return
 	}
@@ -146,7 +146,7 @@ func (h *Quotes) TickerQuotes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "from must not be after to")
 		return
 	}
-	ticker, ok := h.ticker(w, r)
+	ticker, ok := loadTicker(w, r, h.store, pathTicker(r))
 	if !ok {
 		return
 	}
@@ -214,10 +214,9 @@ func (h *Quotes) SessionQuotes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newQuotes(quotes))
 }
 
-// ticker loads the ticker in the path, answering 404 or 500 itself when it can't.
-func (h *Quotes) ticker(w http.ResponseWriter, r *http.Request) (quote.Ticker, bool) {
-	name := strings.ToUpper(r.PathValue("ticker"))
-	ticker, err := h.store.Ticker(r.Context(), name)
+// loadTicker loads a ticker, answering 404 or 500 itself when it can't.
+func loadTicker(w http.ResponseWriter, r *http.Request, store QuoteReader, name string) (quote.Ticker, bool) {
+	ticker, err := store.Ticker(r.Context(), name)
 	switch {
 	case errors.Is(err, quote.ErrUnknownTicker):
 		writeError(w, http.StatusNotFound, "ticker "+name+" not found")
@@ -228,6 +227,8 @@ func (h *Quotes) ticker(w http.ResponseWriter, r *http.Request) (quote.Ticker, b
 	}
 	return ticker, true
 }
+
+func pathTicker(r *http.Request) string { return strings.ToUpper(r.PathValue("ticker")) }
 
 func optionalDay(r *http.Request, param string) (time.Time, error) {
 	value := r.URL.Query().Get(param)
