@@ -59,7 +59,7 @@ func Backtest(args []string) {
 	ctx, app := bootstrap.Start()
 	defer app.Close()
 
-	history, err := quote.History(ctx, app.DB, from.AddDate(-*warmup, 0, 0))
+	history, err := quote.NewPostgres(app.DB).History(ctx, from.AddDate(-*warmup, 0, 0))
 	if err != nil {
 		app.Fatalf("failed to load history: %v", err)
 	}

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"oracle/internal/b3"
 	"oracle/internal/quote"
@@ -97,67 +96,10 @@ func (f *fakeB3) set(name string, content file) {
 	f.files[name] = content
 }
 
-// trend is a liquid stock in a steady uptrend, with a winning pullback trade at every index in dips
-// and, when pullbackToday is set, a fresh oversold signal on the last bar. The last bar is on last.
-//
-// A dip is one down day (RSI(2) about 9, above the SMA200) followed by a day that touches the
-// limit entry and closes above the target, so the rule records a win.
-func trend(ticker string, n int, last time.Time, dips []int, pullbackToday bool) []quote.Quote {
-	isDip := make(map[int]bool, len(dips))
-	for _, d := range dips {
-		isDip[d] = true
-	}
-	bars := make([]quote.Quote, 0, n)
-	c := 10.0
-	for i := range n {
-		var q quote.Quote
-		switch {
-		case pullbackToday && i >= n-2:
-			c -= 0.4
-			q = quote.Quote{Open: c + 0.34, High: c + 0.39, Low: c - 0.06, Close: c}
-		case isDip[i]:
-			c -= 0.4
-			q = quote.Quote{Open: c + 0.34, High: c + 0.39, Low: c - 0.06, Close: c}
-		case isDip[i-1]:
-			q = quote.Quote{Open: c + 0.04, High: c + 0.94, Low: c - 0.26, Close: c + 0.84}
-			c += 0.84
-		default:
-			c += 0.04
-			q = quote.Quote{Open: c - 0.02, High: c + 0.1, Low: c - 0.1, Close: c}
-		}
-		q.Ticker, q.Name, q.Spec, q.ISIN = ticker, ticker+" SA", "ON      NM", "BR"+ticker+"ACNOR"
-		q.Date = last.AddDate(0, 0, i-n+1)
-		q.Average = round(q.Close)
-		q.Open, q.High, q.Low, q.Close = round(q.Open), round(q.High), round(q.Low), round(q.Close)
-		q.Trades, q.Quantity, q.Volume = 1000, 1_000_000, 1e8
-		bars = append(bars, q)
-	}
-	return bars
-}
-
-// dips spaces n winning trades 30 sessions apart, after the 200 sessions the trend filter needs.
-func dips(n int) []int {
-	idx := make([]int, n)
-	for i := range idx {
-		idx[i] = 220 + 30*i
-	}
-	return idx
-}
-
-func round(v float64) float64 { return math.Round(v*100) / 100 }
-
 func records(bars []quote.Quote) []string {
 	recs := make([]string, len(bars))
 	for i, q := range bars {
 		recs[i] = stock(q)
 	}
 	return recs
-}
-
-func day(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, time.UTC) }
-
-// todayUTC is the current date at midnight, how dates are stored.
-func todayUTC() time.Time {
-	y, m, d := time.Now().Date()
-	return day(y, m, d)
 }

@@ -19,7 +19,7 @@ func Sync(args []string) {
 	ctx, app := bootstrap.Start()
 	defer app.Close()
 
-	if err := quote.SyncHistory(ctx, app.DB, b3.NewClient(), *since); err != nil {
+	if err := quote.SyncHistory(ctx, quote.NewPostgres(app.DB), b3.NewClient(), *since); err != nil {
 		app.Fatalf("sync failed: %v", err)
 	}
 	log.Println("quote history is up to date")

@@ -114,6 +114,9 @@ internal/
 config/        reads .env
 pkg/db/        Postgres connection
 test/
+  mock/        in-memory implementations of the contracts, for unit tests
+  contract/    behavior shared by every implementation of a contract
+  fixture/     synthetic quote series shaped to trigger the strategy
   integration/ tests against a real Postgres and the compiled binary
 ```
 
@@ -158,15 +161,21 @@ The image is built for `linux/arm64` and holds only the `oracle` binary. Inside 
 go test ./...
 ```
 
-The unit tests sit next to the code they test and don't need a database: the B3 and Yahoo APIs are replaced by local HTTP servers and Postgres by `go-sqlmock`.
+The unit tests sit next to the code they test and don't need a database. What a package depends on is a contract: `quote.Store` for the database, `quote.Source` for the B3 files and an estimator for Yahoo in `recommend`. Unit tests use the in-memory implementations in `test/mock`. The B3 and Yahoo HTTP clients themselves are tested against local HTTP servers.
 
 The integration tests are in `test/integration`, behind the `integration` build tag, so `go test ./...` skips them:
 
 ```
-docker compose up -d
-make test-integration
+make test-integration    # starts the test database, then runs the tests
+make test-db-down        # stops it
 ```
 
-They run against the Postgres from `docker-compose.yml`, using the same `DB_*` variables as the commands. Every test creates its own database and drops it at the end, so the data you synced is never touched. They cover the sync (filtering, incremental loads, duplicates, rollback of a failed file), the history query, the whole sync → history → strategy pipeline, and the compiled `oracle` binary for every command and its error exits. B3 and Yahoo are still faked, so the tests don't depend on the network.
+They use their own Postgres, the `postgres-test` service of `docker-compose.yml` on port 5433, kept in memory and never started by `docker compose up`. They read only the `TEST_DB_*` variables, so they can't reach the database with your data. Before the tests the schema is seeded into a template database; each test clones it (or starts empty, to test the migration), inserts the data it needs and drops its database at the end, so tests run in parallel.
+
+They cover the Postgres store, the sync over HTTP into Postgres (filtering, incremental loads, rollback of a corrupt file), the whole sync → history → strategy pipeline, and the compiled `oracle` binary for every command and its error exits. B3 and Yahoo are still faked, so the tests don't depend on the network.
+
+The suite in `test/contract` runs against both `mock.Store` (unit tests) and the Postgres store (integration tests), so the mock can't drift from the real database.
+
+CI (`.github/workflows/ci.yml`) runs the lint, the unit tests and `make test-integration` on every pull request.
 
 This is not investment advice.

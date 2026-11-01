@@ -256,7 +256,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest"] },
     { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · conexão · Ctrl+C",      flows: ["sync", "recommend", "backtest"] },
     { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "só /health por enquanto",        flows: [] },
-    { id: "hist",   x: 370, y: 440, t: "quote.History",      s: "só ações ON, PN e units",        flows: ["recommend", "backtest"] },
+    { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "só ações ON, PN e units",        flows: ["recommend", "backtest"] },
     { id: "yahoo",  x: 110, y: 440, t: "Yahoo Finance",      s: "preço-alvo dos analistas",       kind: "external", flows: ["recommend"] },
     { id: "rec",    x: 110, y: 550, t: "oracle recommend",   s: "nível forte → tendência",        flows: ["recommend"] },
     { id: "bt",     x: 630, y: 550, t: "internal/backtest",  s: "prepare → simulate",             flows: ["backtest"] },
@@ -324,7 +324,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     recommend: {
       title: "make recommend",
       items: [
-        "<code>quote.History</code> carrega 3 anos de ações ON, PN e units, e o comando avisa se o último pregão no banco está velho.",
+        "<code>Store.History</code> carrega 3 anos de ações ON, PN e units, e o comando avisa se o último pregão no banco está velho.",
         "Só entram ações que negociaram no último pregão. <code>swing.Analyze</code> descarta as de volume mediano abaixo de R$ 5 mi, simula a regra no histórico e vê se há sinal hoje.",
         "É elegível quem tem sinal hoje, pelo menos 5 operações no histórico e expectância positiva.",
         "Para as elegíveis, busca o preço-alvo no Yahoo Finance. Alvo abaixo do preço atual descarta a ação. Se o Yahoo falhar, segue só com o histórico.",
@@ -335,7 +335,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     backtest: {
       title: "make backtest",
       items: [
-        "<code>quote.History</code> carrega o período do teste e mais <code>-warmup</code> anos antes, para os sinais terem histórico.",
+        "<code>Store.History</code> carrega o período do teste e mais <code>-warmup</code> anos antes, para os sinais terem histórico.",
         "<code>prepare</code> corta as séries nos splits, monta o calendário de pregões, acha os sinais e simula o histórico de cada ação.",
         "<code>simulate</code> percorre os pregões. Em cada um, <code>settle</code> fecha as posições que saíram, <code>worth</code> calcula o patrimônio, <code>rank</code> escolhe os candidatos e <code>buy</code> envia as ordens.",
         "O <code>rank</code> só usa operações que já terminaram naquele dia, então nenhuma decisão enxerga o futuro.",

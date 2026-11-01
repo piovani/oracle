@@ -240,6 +240,10 @@ linters:
           - goconst
           - gosec
           - maintidx
+      # The contract suites are test bodies run as subtests, not helpers: t.Helper would hide the failing line.
+      - path: test/contract/
+        linters:
+          - thelper
 
 formatters:
   enable:

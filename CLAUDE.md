@@ -16,10 +16,11 @@ make lint                     # golangci-lint v2, config in .golangci.yml; must 
 make lint-fix
 go test ./...
 go test ./internal/swing -run TestName -v   # single test
-make test-integration         # needs docker compose up -d
+make test-integration         # starts postgres-test (port 5433) and runs test/integration; same as CI
+make test-db-down
 ```
 
-Unit tests don't need a database; they build synthetic quote series in memory, fake B3 and Yahoo with `httptest` and Postgres with `go-sqlmock`. Integration tests live in `test/integration` behind the `integration` build tag (excluded from `go test ./...`): each test creates and drops its own Postgres database, and the CLI tests run the compiled binary. Extra flags not exposed by the Makefile (`-years`, `-no-estimates`, `-warmup`, `-lookback`, `-oversold`, `-min-volume`) are passed with `go run ./cmd/oracle <command> -flag`.
+Unit tests sit next to the code and don't need a database. Dependencies are contracts (`quote.Store`, `quote.Source`, the `estimator` in `command`); unit tests use the in-memory mocks in `test/mock` (tests that import it must be in the external `_test` package of `quote`, or it is an import cycle). `test/fixture` builds price series that trigger the strategy. Integration tests live in `test/integration` behind the `integration` build tag: they use only the `TEST_DB_*` variables (never `DB_*`), clone a seeded template database per test, and run in parallel. `test/contract` runs the same `quote.Store` suite against the mock and against Postgres; when the contract changes, update the suite, the mock and `quote.Postgres` together. Extra flags not exposed by the Makefile (`-years`, `-no-estimates`, `-warmup`, `-lookback`, `-oversold`, `-min-volume`) are passed with `go run ./cmd/oracle <command> -flag`.
 
 ## Architecture
 
@@ -35,7 +36,7 @@ After `Start`, exit with `app.Fatalf` instead of `log.Fatalf`, so the deferred `
 Data flow:
 
 1. **`internal/b3`** parses B3's fixed-width COTAHIST files (annual/monthly/daily ZIPs), keeping only round-lot cash-market records. `ErrNotFound` means B3 hasn't published that file (holiday, weekend, session not closed) and is skipped, not an error.
-2. **`internal/quote`** stores them via GORM (`Quote`, PK ticker+date). `SyncedFile` records every file already loaded, so sync is incremental and idempotent (one transaction per file, `ON CONFLICT DO NOTHING`). `History` loads stocks only (spec `ON`/`PN`/`UNT`) as `map[ticker][]Quote` ordered by date.
+2. **`internal/quote`** stores them behind the `Store` contract; `Postgres` is the GORM implementation (`Quote`, PK ticker+date). `SyncedFile` records every file already loaded, so `SyncHistory` is incremental and idempotent (`SaveFile` is one transaction per file, `ON CONFLICT DO NOTHING`). `History` loads stocks only (spec `ON`/`PN`/`UNT`) as `map[ticker][]Quote` ordered by date.
 3. **`internal/swing`** is the strategy and the single source of truth for trading logic: `Signal` (close above SMA200 and RSI(2) below `Oversold`), `Levels` (limit entry 0.5 ATR below close, target +1 ATR, stop −2 ATR), `Simulate` (next-day fill, gaps, max hold of 5 sessions, costs), `Analyze` (per-ticker track record) and `Rank` (sizing by capital share and max risk).
 4. **`command.Recommend`** runs `swing.Analyze` on every ticker that traded on the last session, tries `swing.Tiers` from strongest to weakest (stops after the first unless `-fill`), fetches analyst targets from **`internal/yahoo`** (unofficial API with cookie+crumb; failure degrades to history-only ranking) and prints the plan.
 5. **`internal/backtest`** replays the same `swing` functions day by day over the whole portfolio with one cash balance. `prepare` builds the calendar, signals and per-ticker track records; `simulate` walks the days; `rank` picks candidates. `summary.go` computes return, drawdown, Sharpe and per-year stats against an equal-weight benchmark.

@@ -3,7 +3,6 @@ module oracle
 go 1.27.3
 
 require (
-	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/joho/godotenv v1.5.1
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2

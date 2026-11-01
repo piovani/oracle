@@ -21,3 +21,14 @@ updates:
     commit-message:
       prefix: "deps"
     open-pull-requests-limit: 5
+
+  # Actions used by .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "America/Sao_Paulo"
+    commit-message:
+      prefix: "ci"

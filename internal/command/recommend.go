@@ -56,7 +56,7 @@ func Recommend(args []string) {
 	ctx, app := bootstrap.Start()
 	defer app.Close()
 
-	history, err := quote.History(ctx, app.DB, time.Now().AddDate(-opts.years, 0, 0))
+	history, err := quote.NewPostgres(app.DB).History(ctx, time.Now().AddDate(-opts.years, 0, 0))
 	if err != nil {
 		app.Fatalf("failed to load history: %v", err)
 	}
@@ -147,8 +147,13 @@ func eligibleTickers(analyses []swing.Analysis, params swing.Params) []string {
 	return tickers
 }
 
+// estimator gives analyst targets; *yahoo.Client in production.
+type estimator interface {
+	Estimate(ctx context.Context, ticker string) (yahoo.Estimate, error)
+}
+
 type estimates struct {
-	client   *yahoo.Client
+	client   estimator
 	byTicker map[string]yahoo.Estimate
 	tried    map[string]bool
 }

@@ -23,8 +23,7 @@ import (
 	"oracle/internal/backtest"
 	"oracle/internal/quote"
 	"oracle/internal/swing"
-
-	"gorm.io/gorm"
+	"oracle/test/fixture"
 )
 
 type output struct {
@@ -58,21 +57,9 @@ func (o output) String() string {
 	return fmt.Sprintf("exit %d\n--- stdout\n%s--- stderr\n%s", o.code, o.stdout, o.stderr)
 }
 
-// seed creates the tables and stores the bars, as a sync would.
-func seed(t *testing.T, db *gorm.DB, series ...[]quote.Quote) {
-	t.Helper()
-	if err := db.AutoMigrate(&quote.Quote{}, &quote.SyncedFile{}); err != nil {
-		t.Fatal(err)
-	}
-	for _, bars := range series {
-		if err := db.CreateInBatches(bars, 500).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
 func TestCLISyncCreatesTheSchema(t *testing.T) {
-	db, cfg := newDatabase(t)
+	t.Parallel()
+	db, cfg := emptyDatabase(t)
 	// No file is due for a year in the future, so nothing is downloaded from the real B3.
 	out := oracle(t, cfg, nil, "sync", "-since", "2999")
 	if out.code != 0 || !strings.Contains(out.stderr, "quote history is up to date") {
@@ -86,9 +73,10 @@ func TestCLISyncCreatesTheSchema(t *testing.T) {
 }
 
 func TestCLIBacktest(t *testing.T) {
+	t.Parallel()
 	db, cfg := newDatabase(t)
-	bars := trend("WIN3", 700, todayUTC(), dips(15), false)
-	seed(t, db, bars, trend("FLAT3", 700, todayUTC(), nil, false))
+	bars := fixture.Trend("WIN3", 700, fixture.Today(), fixture.Dips(15))
+	insert(t, db, bars, fixture.Trend("FLAT3", 700, fixture.Today(), nil))
 	from := bars[300].Date
 	trades := filepath.Join(t.TempDir(), "trades.csv")
 
@@ -98,7 +86,7 @@ func TestCLIBacktest(t *testing.T) {
 	}
 
 	// The command must print what the backtest package computes from the same database with the default flags.
-	history, err := quote.History(t.Context(), db, from.AddDate(-4, 0, 0))
+	history, err := quote.NewPostgres(db).History(t.Context(), from.AddDate(-4, 0, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +101,7 @@ func TestCLIBacktest(t *testing.T) {
 		t.Fatal("the scenario produced no trades")
 	}
 	for _, want := range []string{
-		fmt.Sprintf("Backtest — %s a %s", from.Format("02/01/2006"), todayUTC().Format("02/01/2006")),
+		fmt.Sprintf("Backtest — %s a %s", from.Format("02/01/2006"), fixture.Today().Format("02/01/2006")),
 		"ranking expectancy | RSI(2) < 10",
 		fmt.Sprintf("Operações: %d | ordens enviadas: %d", s.Trades, res.Orders),
 		fmt.Sprintf("R$ %.2f", s.Final),
@@ -139,10 +127,11 @@ func TestCLIBacktest(t *testing.T) {
 }
 
 func TestCLIBacktestFlags(t *testing.T) {
+	t.Parallel()
 	db, cfg := newDatabase(t)
-	seed(t, db, trend("WIN3", 400, todayUTC(), dips(5), false))
+	insert(t, db, fixture.Trend("WIN3", 400, fixture.Today(), fixture.Dips(5)))
 
-	out := oracle(t, cfg, nil, "backtest", "-from", todayUTC().AddDate(0, 0, -100).Format(time.DateOnly),
+	out := oracle(t, cfg, nil, "backtest", "-from", fixture.Today().AddDate(0, 0, -100).Format(time.DateOnly),
 		"-rank", "rsi", "-oversold", "30", "-cost", "0.1", "-top", "1", "-risk", "1.5", "-capital", "2000")
 	if out.code != 0 {
 		t.Fatalf("backtest failed:\n%s", out)
@@ -154,12 +143,13 @@ func TestCLIBacktestFlags(t *testing.T) {
 }
 
 func TestCLIRecommend(t *testing.T) {
+	t.Parallel()
 	db, cfg := newDatabase(t)
-	today := todayUTC()
-	seed(t, db,
-		trend("WIN3", 400, today, dips(5), true),
-		trend("OLD3", 400, today.AddDate(0, 0, -10), dips(5), true), // stopped trading
-		trend("FLAT3", 400, today, nil, false),                      // no signal today
+	today := fixture.Today()
+	insert(t, db,
+		fixture.Trend("WIN3", 400, today, fixture.Dips(5), fixture.StrongPullback...),
+		fixture.Trend("OLD3", 400, today.AddDate(0, 0, -10), fixture.Dips(5), fixture.StrongPullback...), // stopped trading
+		fixture.Trend("FLAT3", 400, today, nil),                                                          // no signal today
 	)
 
 	out := oracle(t, cfg, nil, "recommend", "-no-estimates", "-capital", "1000", "-top", "3")
@@ -167,7 +157,7 @@ func TestCLIRecommend(t *testing.T) {
 		t.Fatalf("recommend failed:\n%s", out)
 	}
 
-	history, err := quote.History(t.Context(), db, today.AddDate(-3, 0, 0))
+	history, err := quote.NewPostgres(db).History(t.Context(), today.AddDate(-3, 0, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,8 +191,9 @@ func TestCLIRecommend(t *testing.T) {
 }
 
 func TestCLIRecommendWithoutSignals(t *testing.T) {
+	t.Parallel()
 	db, cfg := newDatabase(t)
-	seed(t, db, trend("FLAT3", 400, todayUTC().AddDate(0, 0, -10), nil, false))
+	insert(t, db, fixture.Trend("FLAT3", 400, fixture.Today().AddDate(0, 0, -10), nil))
 
 	out := oracle(t, cfg, nil, "recommend", "-no-estimates")
 	if out.code != 0 || !strings.Contains(out.stdout, "Nenhuma ação passou nos filtros hoje") {
@@ -214,14 +205,14 @@ func TestCLIRecommendWithoutSignals(t *testing.T) {
 }
 
 func TestCLIFailures(t *testing.T) {
-	_, noTables := newDatabase(t)
-	migrated, noQuotes := newDatabase(t)
-	seed(t, migrated)
+	t.Parallel()
+	_, noTables := emptyDatabase(t)
+	_, noQuotes := newDatabase(t)
 	seeded, withQuotes := newDatabase(t)
-	seed(t, seeded, trend("WIN3", 300, todayUTC(), nil, false))
+	insert(t, seeded, fixture.Trend("WIN3", 300, fixture.Today(), nil))
 
-	recent := todayUTC().AddDate(0, 0, -50).Format(time.DateOnly)
-	tomorrow := todayUTC().AddDate(0, 0, 1).Format(time.DateOnly)
+	recent := fixture.Today().AddDate(0, 0, -50).Format(time.DateOnly)
+	tomorrow := fixture.Today().AddDate(0, 0, 1).Format(time.DateOnly)
 	unwritable := filepath.Join(t.TempDir(), "missing", "trades.csv")
 
 	tests := []struct {
@@ -247,6 +238,7 @@ func TestCLIFailures(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			out := oracle(t, tt.cfg, tt.env, tt.args...)
 			if out.code != tt.code || !strings.Contains(out.stderr, tt.error) {
 				t.Errorf("want exit %d with %q:\n%s", tt.code, tt.error, out)
@@ -256,6 +248,7 @@ func TestCLIFailures(t *testing.T) {
 }
 
 func TestCLIAPIHealth(t *testing.T) {
+	t.Parallel()
 	_, cfg := newDatabase(t)
 	port := freePort(t)
 

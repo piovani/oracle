@@ -8,21 +8,17 @@ import (
 	"time"
 
 	"oracle/internal/b3"
-
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-	"gorm.io/gorm/logger"
 )
 
-const batchSize = 1000
-
-func SyncHistory(ctx context.Context, db *gorm.DB, client *b3.Client, sinceYear int) error {
-	if err := db.AutoMigrate(&Quote{}, &SyncedFile{}); err != nil {
+// SyncHistory loads into the store every B3 file since sinceYear that it does not have yet.
+// Files B3 has not published (holidays, weekends, today before the close) are skipped and tried again next time.
+func SyncHistory(ctx context.Context, store Store, source Source, sinceYear int) error {
+	if err := store.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
 
-	var synced []string
-	if err := db.WithContext(ctx).Model(&SyncedFile{}).Pluck("name", &synced).Error; err != nil {
+	synced, err := store.SyncedFiles(ctx)
+	if err != nil {
 		return err
 	}
 	done := make(map[string]bool, len(synced))
@@ -34,17 +30,37 @@ func SyncHistory(ctx context.Context, db *gorm.DB, client *b3.Client, sinceYear 
 		if done[file] {
 			continue
 		}
-		n, err := syncFile(ctx, db, client, file)
+		n, err := store.SaveFile(ctx, file, func(save func(Quote) error) error {
+			return source.Fetch(ctx, file, func(q b3.Quote) error { return save(fromB3(q)) })
+		})
 		if errors.Is(err, b3.ErrNotFound) {
 			log.Printf("%s: not published by B3, skipping", file)
 			continue
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("sync %s: %w", file, err)
 		}
 		log.Printf("%s: %d quotes", file, n)
 	}
 	return nil
+}
+
+func fromB3(q b3.Quote) Quote {
+	return Quote{
+		Ticker:   q.Ticker,
+		Date:     q.Date,
+		Name:     q.Name,
+		Spec:     q.Spec,
+		ISIN:     q.ISIN,
+		Open:     q.Open,
+		High:     q.High,
+		Low:      q.Low,
+		Average:  q.Average,
+		Close:    q.Close,
+		Trades:   q.Trades,
+		Quantity: q.Quantity,
+		Volume:   q.Volume,
+	}
 }
 
 func filesUntil(sinceYear int, day time.Time) []string {
@@ -69,58 +85,6 @@ func filesUntil(sinceYear int, day time.Time) []string {
 		files = append(files, b3.DailyFile(d))
 	}
 	return files
-}
-
-func syncFile(ctx context.Context, db *gorm.DB, client *b3.Client, file string) (int, error) {
-	total := 0
-	err := db.WithContext(ctx).Session(&gorm.Session{Logger: logger.Discard}).Transaction(func(tx *gorm.DB) error {
-		insert := tx.Clauses(clause.OnConflict{DoNothing: true})
-		batch := make([]Quote, 0, batchSize)
-		flush := func() error {
-			if len(batch) == 0 {
-				return nil
-			}
-			if err := insert.Create(&batch).Error; err != nil {
-				return err
-			}
-			total += len(batch)
-			batch = batch[:0]
-			return nil
-		}
-
-		err := client.Fetch(ctx, file, func(q b3.Quote) error {
-			batch = append(batch, Quote{
-				Ticker:   q.Ticker,
-				Date:     q.Date,
-				Name:     q.Name,
-				Spec:     q.Spec,
-				ISIN:     q.ISIN,
-				Open:     q.Open,
-				High:     q.High,
-				Low:      q.Low,
-				Average:  q.Average,
-				Close:    q.Close,
-				Trades:   q.Trades,
-				Quantity: q.Quantity,
-				Volume:   q.Volume,
-			})
-			if len(batch) == batchSize {
-				return flush()
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		if err := flush(); err != nil {
-			return err
-		}
-		return tx.Create(&SyncedFile{Name: file, Quotes: total, SyncedAt: time.Now()}).Error
-	})
-	if err != nil {
-		return 0, fmt.Errorf("sync %s: %w", file, err)
-	}
-	return total, nil
 }
 
 // now is the clock, replaced in tests.
