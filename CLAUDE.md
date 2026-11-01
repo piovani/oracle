@@ -16,7 +16,8 @@ make lint                     # golangci-lint v2, config in .golangci.yml; must 
 make lint-fix
 go test ./...
 go test ./internal/swing -run TestName -v   # single test
-make test-integration         # starts postgres-test (port 5433) and runs test/integration; same as CI
+make test-integration         # starts postgres-test (port 5433) and runs test/integration
+make coverage [COVERAGE_MIN=90]  # unit + integration + binary coverage merged into coverage.out; fails below the minimum; same as CI
 make test-db-down
 ```
 

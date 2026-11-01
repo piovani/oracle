@@ -167,8 +167,11 @@ The integration tests are in `test/integration`, behind the `integration` build 
 
 ```
 make test-integration    # starts the test database, then runs the tests
+make coverage            # unit + integration tests with merged coverage; fails below COVERAGE_MIN (90)
 make test-db-down        # stops it
 ```
+
+`make coverage` counts the unit tests, the integration tests and the `oracle` binary the CLI tests run (built with `-cover`), and writes the merged profile to `coverage.out` (`go tool cover -html=coverage.out` to browse it).
 
 They use their own Postgres, the `postgres-test` service of `docker-compose.yml` on port 5433, kept in memory and never started by `docker compose up`. They read only the `TEST_DB_*` variables, so they can't reach the database with your data. Before the tests the schema is seeded into a template database; each test clones it (or starts empty, to test the migration), inserts the data it needs and drops its database at the end, so tests run in parallel.
 
@@ -176,6 +179,6 @@ They cover the Postgres store, the sync over HTTP into Postgres (filtering, incr
 
 The suite in `test/contract` runs against both `mock.Store` (unit tests) and the Postgres store (integration tests), so the mock can't drift from the real database.
 
-CI (`.github/workflows/ci.yml`) runs the lint, the unit tests and `make test-integration` on every pull request.
+CI (`.github/workflows/ci.yml`) runs the lint, the unit tests and `make coverage` (which includes the integration tests and requires 90% coverage) on every pull request.
 
 This is not investment advice.

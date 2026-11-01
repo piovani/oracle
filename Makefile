@@ -1,4 +1,4 @@
-.PHONY: sync recommend backtest test test-db test-db-down test-integration lint lint-fix docker-build
+.PHONY: sync recommend backtest test test-db test-db-down test-integration coverage lint lint-fix docker-build
 
 sync:
 	go run ./cmd/oracle sync $(if $(SINCE),-since $(SINCE))
@@ -22,6 +22,19 @@ test-db-down:
 # Starts the test database if needed; the same target runs in CI.
 test-integration: test-db
 	go test -tags integration -race -count=1 ./test/integration/...
+
+# Unit and integration tests, plus the compiled binary the CLI tests run, merged into coverage.out.
+# Fails below COVERAGE_MIN percent; the same target runs in CI.
+COVERAGE_MIN ?= 90
+COVERDIR := $(CURDIR)/.cover
+COVERPKG = $(shell go list ./... | grep -v /test/ | paste -sd, -)
+
+coverage: test-db
+	rm -rf $(COVERDIR) && mkdir -p $(COVERDIR)
+	COVERDIR=$(COVERDIR) go test -tags integration -race -count=1 -coverpkg=$(COVERPKG) ./... -args -test.gocoverdir=$(COVERDIR)
+	go tool covdata textfmt -i=$(COVERDIR) -pkg=$(COVERPKG) -o coverage.out
+	@go tool cover -func=coverage.out | awk -v min=$(COVERAGE_MIN) '/^total:/ { sub("%", "", $$3); \
+		printf "total coverage %s%% (minimum %s%%)\n", $$3, min; exit ($$3 + 0 < min + 0) }'
 
 lint:
 	golangci-lint run ./...

@@ -89,7 +89,13 @@ func run(m *testing.M) int {
 	}
 	defer os.RemoveAll(dir)
 	binary = filepath.Join(dir, "oracle")
-	build := exec.CommandContext(context.Background(), "go", "build", "-o", binary, "oracle/cmd/oracle")
+	args := []string{"build", "-o", binary}
+	if os.Getenv("COVERDIR") != "" {
+		// Coverage run (make coverage): the binary writes its counters to COVERDIR on exit (see env),
+		// so the commands exercised only through the CLI count too.
+		args = append(args, "-cover", "-covermode=atomic", "-coverpkg=oracle/...") // atomic, like go test -race
+	}
+	build := exec.CommandContext(context.Background(), "go", append(args, "oracle/cmd/oracle")...)
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "integration: build oracle: %v\n", err)
@@ -184,8 +190,14 @@ func insert(t *testing.T, conn *gorm.DB, series ...[]quote.Quote) {
 
 // env points a command at the test database.
 func env(cfg config.DBConfig) []string {
-	return append(os.Environ(),
+	vars := append(os.Environ(),
 		"DB_HOST="+cfg.Host, "DB_PORT="+cfg.Port, "DB_USER="+cfg.User,
 		"DB_PASSWORD="+cfg.Password, "DB_NAME="+cfg.Name, "DB_SSLMODE="+cfg.SSLMode,
 	)
+	// go test points GOCOVERDIR of the test process at a temporary directory of its own,
+	// so the coverage directory of the binary comes in COVERDIR instead.
+	if dir := os.Getenv("COVERDIR"); dir != "" {
+		vars = append(vars, "GOCOVERDIR="+dir)
+	}
+	return vars
 }
