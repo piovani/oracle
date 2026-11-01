@@ -1,8 +1,15 @@
 # oracle
 
+[![CI](https://github.com/piovani/oracle/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/piovani/oracle/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](docker-compose.yml)
+[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A590%25-brightgreen)](#tests)
+[![Swagger](https://img.shields.io/badge/docs-Swagger-85EA2D?logo=swagger&logoColor=black)](docs/swagger.yaml)
+[![Postman](https://img.shields.io/badge/docs-Postman-FF6C37?logo=postman&logoColor=white)](docs/postman-collection.json)
+
 B3 (Brazilian stock exchange) quote history stored in Postgres, plus a command that builds the day's trading plan from it.
 
-For a visual overview, open [`docs/flow.html`](docs/flow.html) in a browser. It shows the path of each command (`sync`, `recommend`, `backtest`), one trade session by session, and the rules the code must not break. The page is in Portuguese.
+For a visual overview, open [`docs/flow.html`](docs/flow.html) in a browser. It shows the path of each command (`sync`, `recommend`, `backtest`), one trade session by session, and the rules the code must not break.
 
 ## Setup
 
