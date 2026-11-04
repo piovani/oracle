@@ -14,8 +14,8 @@ make load-test PROFILE=stress BASE_URL=http://localhost:8080 TICKER=VALE3
 | Profile | What it does |
 |---|---|
 | `smoke` | one user calls every route once; every check must pass |
-| `load` | ramps to 20 users, holds 2 minutes, ramps down; 70% light and 30% heavy routes |
-| `stress` | ramps to 150 users to find where latency and errors start; loose thresholds |
+| `load` | ramps to 1000 users in 2 minutes, holds 2 minutes, ramps down; 70% light and 30% heavy routes |
+| `stress` | 1000, 1500, 2000 and 2500 users, 1 minute each, to find where latency and errors start; loose thresholds |
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -34,4 +34,5 @@ Notes:
 - Every route is a read-only `GET`, so the tests don't change the database.
 - `/recommendations` runs with `estimates=false` and `/tickers/{ticker}/estimate` is not called, so
   the tests never hit Yahoo Finance (an unofficial API that would rate-limit the load).
+- With this many users, raise the limit of open files first (`ulimit -n 65535` in the shell that runs `make load-test`): the macOS default is low and shows up as `too many open files` errors.
 - Run it against a local server. The numbers depend on the machine and on the size of the database.

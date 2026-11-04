@@ -4,10 +4,10 @@ import { pick, setup as warmUp } from './common.js';
 
 export const options = {
   stages: [
-    { duration: '1m', target: 25 },
-    { duration: '1m', target: 50 },
-    { duration: '1m', target: 100 },
-    { duration: '1m', target: 150 },
+    { duration: '1m', target: 1000 },
+    { duration: '1m', target: 1500 },
+    { duration: '1m', target: 2000 },
+    { duration: '1m', target: 2500 },
     { duration: '30s', target: 0 },
   ],
   thresholds: { http_req_failed: ['rate<0.05'] },
