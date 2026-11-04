@@ -269,6 +269,36 @@ func TestCLIAPIHealth(t *testing.T) {
 	}
 }
 
+func TestCLIAPIShutsDownOnInterrupt(t *testing.T) {
+	t.Parallel()
+	_, cfg := newDatabase(t)
+	port := freePort(t)
+	cmd := exec.CommandContext(t.Context(), binary, "api")
+	cmd.Env = append(env(cfg), "PORT="+strconv.Itoa(port))
+	cmd.Dir = t.TempDir()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitForAPI(t, fmt.Sprintf("http://127.0.0.1:%d", port), &stderr)
+
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil || !strings.Contains(stderr.String(), "shutting down") {
+			t.Errorf("exit %v, want a clean shutdown\n%s", err, stderr.String())
+		}
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("api still running 10s after Ctrl+C\n%s", stderr.String())
+	}
+}
+
 func TestCLIAPISwagger(t *testing.T) {
 	t.Parallel()
 	_, cfg := newDatabase(t)
@@ -364,7 +394,7 @@ func TestCLIAPIStrategy(t *testing.T) {
 	}
 }
 
-// TestCLIAPIPlan leaves analyst targets off: Yahoo is a live service, not part of these tests.
+// Yahoo is a live service, so the plan is tested without it.
 func TestCLIAPIPlan(t *testing.T) {
 	t.Parallel()
 	conn, cfg := newDatabase(t)
@@ -392,8 +422,6 @@ func TestCLIAPIPlan(t *testing.T) {
 	}
 }
 
-// startAPI runs `oracle api` on a free port against the given database and returns its base URL
-// once it answers /health. The server is killed at the end of the test.
 func startAPI(t *testing.T, cfg config.DBConfig) string {
 	t.Helper()
 	port := freePort(t)
@@ -402,6 +430,9 @@ func startAPI(t *testing.T, cfg config.DBConfig) string {
 	cmd := exec.CommandContext(ctx, binary, "api")
 	cmd.Env = append(env(cfg), "PORT="+strconv.Itoa(port))
 	cmd.Dir = t.TempDir()
+	// Ctrl+C, so it exits cleanly and writes its coverage.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 10 * time.Second
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
@@ -413,16 +444,22 @@ func startAPI(t *testing.T, cfg config.DBConfig) string {
 	})
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	waitForAPI(t, base, &stderr)
+	return base
+}
+
+func waitForAPI(t *testing.T, base string, stderr *bytes.Buffer) {
+	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/health", http.NoBody)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/health", http.NoBody)
 		if err != nil {
 			t.Fatal(err)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			resp.Body.Close()
-			return base
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("api did not start: %v\n%s", err, stderr.String())

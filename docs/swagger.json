@@ -1,7 +1,7 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "HTTP API of the oracle, started with `oracle api`.\nThe server listens on `PORT` (default 8080) and connects to Postgres before it starts listening: if the database is unreachable, the process exits and nothing answers.\nThere is no authentication. Routes that don't exist answer 404, and known routes called with the wrong method answer 405 with an `Allow` header, both in plain text.",
+        "description": "HTTP API of the oracle, started with `oracle api`.\nThe server listens on `PORT` (default 8080) and connects to Postgres before it starts listening: if the database is unreachable, the process exits and nothing answers.\nThere is no authentication. Routes that don't exist answer 404, and known routes called with the wrong method answer 405 with an `Allow` header, both in plain text.\nAny route answers 503 {\"error\": ...} when it takes longer than 9 seconds. The ticker list and the history behind the strategy and plan routes are cached until a new session is stored, so the first call after a sync is the slow one (a few seconds) and the next take milliseconds.\nCtrl+C (SIGINT) stops the server after the requests in flight finish.",
         "title": "oracle API",
         "contact": {},
         "version": "1.0"
@@ -353,7 +353,7 @@
         },
         "/tickers": {
             "get": {
-                "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\nName, spec and ISIN come from the latest quote of each ticker. An empty database answers an empty list.",
+                "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\nName, spec and ISIN come from the latest quote of each ticker. An empty database answers an empty list.\nThe list is cached until a new session is stored.",
                 "produces": [
                     "application/json"
                 ],

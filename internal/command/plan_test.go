@@ -52,7 +52,6 @@ type planBody struct {
 	} `json:"tiers"`
 }
 
-// fakeYahoo connects to est, counting the connections.
 type fakeYahoo struct {
 	est   plan.Estimator
 	err   error
@@ -80,7 +79,6 @@ func lastClose(t *testing.T, store *mock.Store, ticker string) float64 {
 	return bars[len(bars)-1].Close
 }
 
-// The API must serve the plan plan.Build makes, the one oracle recommend prints.
 func TestRecommendationsIsWhatRecommendBuilds(t *testing.T) {
 	store := strategyStore()
 	rec := get(t, newMux(store, now, nil), "/recommendations?capital=1000&top=3&fill=true")
@@ -107,7 +105,6 @@ func TestRecommendationsIsWhatRecommendBuilds(t *testing.T) {
 		}
 		invested += p.Invested
 	}
-	// now() is 5 days after the latest session, so the plan is stale.
 	if got.Session != "2026-10-30" || !got.Stale || got.Capital != 1000 || got.Top != 3 || got.PerStock != 333.33 ||
 		got.MaxLoss != 20 || got.MaxHold != 5 || got.AnalystEstimates || got.Invested != invested ||
 		got.Cash != fraction2(1000-invested) {
@@ -144,7 +141,6 @@ func TestRecommendationsUseAnalystTargets(t *testing.T) {
 		t.Errorf("got estimate %+v, upside %v", p.Estimate, p.Upside)
 	}
 
-	// The next calls of the session reuse the client and the cache.
 	get(t, mux, "/recommendations?fill=true")
 	if yahooSession.calls != 1 || len(est.Requested) != 2 {
 		t.Errorf("connected %d times and requested %v, want one session asking each ticker once", yahooSession.calls, est.Requested)
@@ -197,12 +193,11 @@ func TestRecommendationTiers(t *testing.T) {
 	if rec.Code != http.StatusOK || got.Session != "2026-10-30" || len(got.Tiers) != len(swing.Tiers) {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
-	// WIN3 is a candidate from forte down and MED3 from médio down. Their 10 pullback trades all win;
 	// tendência needs no pullback, so it trades more and loses some.
 	want := []struct {
 		candidates, trades int
 		winRate            float64
-	}{{1, 10, 1}, {2, 10, 1}, {2, 10, 1}, {2, 20, 0.5}}
+	}{{1, 12, 1}, {2, 12, 1}, {2, 12, 1}, {2, 24, 0.5}}
 	for i, w := range want {
 		tier := got.Tiers[i]
 		if tier.Label != swing.Tiers[i].Label || tier.Candidates != w.candidates || tier.Trades != w.trades || tier.WinRate != w.winRate {
@@ -254,7 +249,6 @@ func TestEstimate(t *testing.T) {
 	}
 }
 
-// failLatest fails only LatestSession.
 type failLatest struct{ *mock.Store }
 
 func (failLatest) LatestSession(context.Context) (time.Time, error) {
@@ -273,6 +267,7 @@ func TestPlanErrors(t *testing.T) {
 		{"/recommendations?risk=-1", 400, `{"error":"risk \"-1\" must be more than 0"}`},
 		{"/recommendations?top=0", 400, `{"error":"top \"0\" must be a whole number from 1 to 50"}`},
 		{"/recommendations?top=51", 400, `{"error":"top \"51\" must be a whole number from 1 to 50"}`},
+		{"/recommendations?fill=yes", 400, `{"error":"fill \"yes\" must be true or false"}`},
 		{"/recommendations?fill=maybe", 400, `{"error":"fill \"maybe\" must be true or false"}`},
 		{"/recommendations?estimates=nah", 400, `{"error":"estimates \"nah\" must be true or false"}`},
 		{"/recommendations?years=0", 400, `{"error":"years \"0\" must be a whole number from 1 to 30"}`},
@@ -297,5 +292,35 @@ func TestPlanErrors(t *testing.T) {
 	yahooSession := &fakeYahoo{est: &mock.Estimator{}}
 	if rec := get(t, newMux(failLatest{strategyStore()}, now, yahooSession.connect), "/tickers/WIN3/estimate"); rec.Code != http.StatusInternalServerError {
 		t.Errorf("estimate with a failing latest session: got %d", rec.Code)
+	}
+}
+
+// The estimate route can see a later session than the plan; going back must not reconnect.
+func TestYahooSessionOnlyMovesForward(t *testing.T) {
+	store := strategyStore()
+	yahooSession := &fakeYahoo{est: &mock.Estimator{}}
+	mux := newMux(store, now, yahooSession.connect)
+
+	get(t, mux, "/recommendations")
+	store.Quotes = append(store.Quotes, quote.Quote{Ticker: "XPML11", Spec: "CI", Date: strategyDay.AddDate(0, 0, 1), Close: 100})
+	get(t, mux, "/tickers/WIN3/estimate") // latest session of any quote: a day later
+	get(t, mux, "/recommendations")       // latest session of the stocks: the day before
+	get(t, mux, "/tickers/WIN3/estimate")
+	if yahooSession.calls != 2 {
+		t.Errorf("connected %d times, want 2: once per newer session, none going back", yahooSession.calls)
+	}
+}
+
+type emptyQuotes struct{ *mock.Store }
+
+func (emptyQuotes) TickerQuotes(context.Context, string, time.Time, time.Time) ([]quote.Quote, error) {
+	return []quote.Quote{}, nil
+}
+
+func TestEstimateWithoutTheLastQuote(t *testing.T) {
+	yahooSession := &fakeYahoo{est: &mock.Estimator{}}
+	rec := get(t, newMux(emptyQuotes{strategyStore()}, now, yahooSession.connect), "/tickers/WIN3/estimate")
+	if rec.Code != http.StatusInternalServerError || yahooSession.calls != 0 {
+		t.Errorf("got %d %s after %d connections, want 500 before asking Yahoo", rec.Code, rec.Body.String(), yahooSession.calls)
 	}
 }

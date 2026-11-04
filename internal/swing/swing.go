@@ -128,7 +128,7 @@ func Analyze(ticker string, bars []quote.Quote, p Params) Analysis {
 	return a
 }
 
-// Scan analyzes every series whose last bar is on latest, the stocks recommend picks from, in ticker order.
+// Scan analyzes the series that traded on latest, in ticker order.
 func Scan(history map[string][]quote.Quote, latest time.Time, p Params) []Analysis {
 	var analyses []Analysis
 	for ticker, bars := range history {
@@ -140,7 +140,6 @@ func Scan(history map[string][]quote.Quote, latest time.Time, p Params) []Analys
 	return analyses
 }
 
-// Record is one trade of a track record, with the days it was planned, entered and closed.
 type Record struct {
 	Trade
 	SignalDay time.Time
@@ -148,8 +147,7 @@ type Record struct {
 	ExitDay   time.Time
 }
 
-// TrackRecord lists the trades Analyze counts: every signal of the series after its last split,
-// one trade at a time. It is empty when that part is too short or not liquid enough to analyze.
+// TrackRecord lists the trades Analyze counts.
 func (p Params) TrackRecord(bars []quote.Quote) []Record {
 	bars = continuous(bars)
 	if !p.analyzable(bars) {
@@ -158,13 +156,12 @@ func (p Params) TrackRecord(bars []quote.Quote) []Record {
 	return p.play(bars)
 }
 
-// analyzable reports whether a continuous series has the history and the recent volume the rule needs.
 func (p Params) analyzable(bars []quote.Quote) bool {
 	n := len(bars)
 	return n >= trendLen+volumeLen && medianVolume(bars[n-volumeLen:]) >= p.MinVolume
 }
 
-// play simulates every signal that leaves room for a full holding period, skipping signals while a trade is open.
+// play skips signals while a trade is open.
 func (p Params) play(bars []quote.Quote) []Record {
 	var records []Record
 	for i := trendLen; i+p.MaxHold < len(bars); {

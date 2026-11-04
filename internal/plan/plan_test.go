@@ -5,7 +5,9 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"oracle/internal/quote"
 	"oracle/internal/swing"
@@ -131,7 +133,7 @@ func TestEstimatesFetch(t *testing.T) {
 func TestEstimatesDisabled(t *testing.T) {
 	e := noEstimates()
 	e.Fetch(t.Context(), []string{"AAA3"})
-	if e.Enabled() || len(e.All()) != 0 || len(e.tried) != 0 {
+	if e.Enabled() || len(e.All()) != 0 || len(e.inFlight) != 0 {
 		t.Errorf("got %+v, want nothing fetched", e)
 	}
 	if _, err := e.Get(t.Context(), "AAA3"); !errors.Is(err, ErrDisabled) {
@@ -156,13 +158,69 @@ func TestEstimatesGet(t *testing.T) {
 	if _, err := e.Get(t.Context(), "AAA3"); err != nil || len(est.Requested) != 3 {
 		t.Errorf("cached: got %v after %v requests, want each ticker asked once", err, est.Requested)
 	}
-	e.claim("BUSY3") // another request is fetching it
-	if _, err := e.Get(t.Context(), "BUSY3"); !errors.Is(err, ErrPending) {
-		t.Errorf("pending: got %v", err)
+}
+
+type blocking struct {
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (b *blocking) Estimate(ctx context.Context, _ string) (yahoo.Estimate, error) {
+	b.calls.Add(1)
+	select {
+	case <-b.release:
+		return yahoo.Estimate{Target: 42}, nil
+	case <-ctx.Done():
+		return yahoo.Estimate{}, ctx.Err()
 	}
 }
 
-// honorsContext fails once ctx ended, like the HTTP client of *yahoo.Client.
+func TestEstimatesWaitForTheRequestInFlight(t *testing.T) {
+	client := &blocking{release: make(chan struct{})}
+	e := withEstimator(client)
+
+	var wg sync.WaitGroup
+	got := make([]float64, 4)
+	for i := range got {
+		wg.Go(func() {
+			e.Fetch(t.Context(), []string{"AAA3"})
+			got[i] = e.All()["AAA3"].Target
+		})
+	}
+	waitFor(t, "the first request to reach Yahoo", func() bool { return client.calls.Load() > 0 })
+	time.Sleep(20 * time.Millisecond) // the other requests are waiting by now
+	close(client.release)
+	wg.Wait()
+
+	if client.calls.Load() != 1 || !slices.Equal(got, []float64{42, 42, 42, 42}) {
+		t.Errorf("asked %d times, got %v: want one request and every plan with the estimate", client.calls.Load(), got)
+	}
+}
+
+func TestEstimatesWaitingGivesUp(t *testing.T) {
+	client := &blocking{release: make(chan struct{})}
+	e := withEstimator(client)
+
+	first, cancelFirst := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { e.Fetch(first, []string{"AAA3"}); close(done) }()
+	waitFor(t, "the first request to reach Yahoo", func() bool { return client.calls.Load() > 0 })
+
+	waiting, cancelWaiting := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancelWaiting()
+	if _, err := e.Get(waiting, "AAA3"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("waiting: got %v, want its own deadline", err)
+	}
+
+	cancelFirst()
+	<-done
+	close(client.release)
+	if got, err := e.Get(t.Context(), "AAA3"); err != nil || got.Target != 42 || client.calls.Load() != 2 {
+		t.Errorf("got %+v, %v after %d requests, want the ticker asked again", got, err, client.calls.Load())
+	}
+}
+
+// honorsContext fails once ctx ends, like the real client.
 type honorsContext struct{ est *mock.Estimator }
 
 func (h honorsContext) Estimate(ctx context.Context, ticker string) (yahoo.Estimate, error) {
@@ -173,7 +231,6 @@ func (h honorsContext) Estimate(ctx context.Context, ticker string) (yahoo.Estim
 	return h.est.Estimate(ctx, ticker)
 }
 
-// A request that ran out of time leaves the ticker to be tried again, and stops asking.
 func TestEstimatesRetryAfterTimeout(t *testing.T) {
 	est := &mock.Estimator{Estimates: map[string]yahoo.Estimate{"AAA3": {Target: 10}, "BBB3": {Target: 20}}}
 	e := withEstimator(honorsContext{est})
@@ -193,7 +250,7 @@ func TestEstimatesRetryAfterTimeout(t *testing.T) {
 	}
 }
 
-// constant is safe for concurrent use, unlike mock.Estimator, to check Estimates under -race.
+// constant is safe for concurrent use, unlike mock.Estimator.
 type constant struct{}
 
 func (constant) Estimate(context.Context, string) (yahoo.Estimate, error) {
@@ -252,5 +309,38 @@ func TestEligibleTickers(t *testing.T) {
 	}
 	if got := eligibleTickers(analyses, p); !slices.Equal(got, []string{"AAA3", "ZZZ3"}) {
 		t.Errorf("got %v, want the eligible ones sorted", got)
+	}
+}
+
+func TestEstimatesWaiterTakesOver(t *testing.T) {
+	client := &blocking{release: make(chan struct{})}
+	e := withEstimator(client)
+
+	first, cancelFirst := context.WithCancel(t.Context())
+	go e.Fetch(first, []string{"AAA3"})
+	waitFor(t, "the first request to reach Yahoo", func() bool { return client.calls.Load() > 0 })
+	got := make(chan yahoo.Estimate)
+	go func() {
+		estimate, _ := e.Get(t.Context(), "AAA3")
+		got <- estimate
+	}()
+	time.Sleep(20 * time.Millisecond) // the second request is waiting by now
+	cancelFirst()
+	waitFor(t, "the waiter to ask Yahoo itself", func() bool { return client.calls.Load() >= 2 })
+	close(client.release)
+	if estimate := <-got; estimate.Target != 42 {
+		t.Errorf("got %+v, want the waiter to ask after the first request gave up", estimate)
+	}
+}
+
+// waitFor fails instead of hanging when cond never holds.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

@@ -4,21 +4,24 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"oracle/internal/quote"
 )
 
 // Store is an in-memory quote.Store that honors its contract: a file is saved all or nothing,
-// and a quote already stored is kept.
+// and a quote already stored is kept. It is safe for concurrent use, like Postgres.
 type Store struct {
+	mu sync.Mutex
+
 	Quotes []quote.Quote // stored, in the order they were saved
 	Synced []string      // files recorded as synced
 
 	MigrateErr     error
 	SyncedFilesErr error
 	HistoryErr     error
-	// ReadErr fails Tickers, Ticker, TickerQuotes, Session and LatestSession.
+	// ReadErr fails every read but History and SyncedFiles.
 	ReadErr error
 	// SaveErr fails SaveFile for a file after load has run, like a failed commit.
 	SaveErr map[string]error
@@ -29,11 +32,15 @@ type Store struct {
 var _ quote.Store = (*Store)(nil)
 
 func (s *Store) Migrate(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "Migrate")
 	return s.MigrateErr
 }
 
 func (s *Store) SyncedFiles(context.Context) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "SyncedFiles")
 	if s.SyncedFilesErr != nil {
 		return nil, s.SyncedFilesErr
@@ -42,6 +49,8 @@ func (s *Store) SyncedFiles(context.Context) ([]string, error) {
 }
 
 func (s *Store) SaveFile(_ context.Context, name string, load func(save func(quote.Quote) error) error) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "SaveFile "+name)
 	var pending []quote.Quote
 	err := load(func(q quote.Quote) error {
@@ -64,6 +73,8 @@ func (s *Store) SaveFile(_ context.Context, name string, load func(save func(quo
 }
 
 func (s *Store) History(_ context.Context, since time.Time) (map[string][]quote.Quote, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "History")
 	if s.HistoryErr != nil {
 		return nil, s.HistoryErr
@@ -81,7 +92,13 @@ func (s *Store) History(_ context.Context, since time.Time) (map[string][]quote.
 }
 
 func (s *Store) Tickers(context.Context) ([]quote.Ticker, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "Tickers")
+	return s.tickers()
+}
+
+func (s *Store) tickers() ([]quote.Ticker, error) {
 	if s.ReadErr != nil {
 		return nil, s.ReadErr
 	}
@@ -112,9 +129,11 @@ func (s *Store) Tickers(context.Context) ([]quote.Ticker, error) {
 	return tickers, nil
 }
 
-func (s *Store) Ticker(ctx context.Context, ticker string) (quote.Ticker, error) {
-	tickers, err := s.Tickers(ctx)
-	s.Calls[len(s.Calls)-1] = "Ticker"
+func (s *Store) Ticker(_ context.Context, ticker string) (quote.Ticker, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Calls = append(s.Calls, "Ticker")
+	tickers, err := s.tickers()
 	if err != nil {
 		return quote.Ticker{}, err
 	}
@@ -127,6 +146,8 @@ func (s *Store) Ticker(ctx context.Context, ticker string) (quote.Ticker, error)
 }
 
 func (s *Store) TickerQuotes(_ context.Context, ticker string, from, to time.Time) ([]quote.Quote, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "TickerQuotes")
 	if s.ReadErr != nil {
 		return nil, s.ReadErr
@@ -142,6 +163,8 @@ func (s *Store) TickerQuotes(_ context.Context, ticker string, from, to time.Tim
 }
 
 func (s *Store) Session(_ context.Context, day time.Time) ([]quote.Quote, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "Session")
 	if s.ReadErr != nil {
 		return nil, s.ReadErr
@@ -157,6 +180,8 @@ func (s *Store) Session(_ context.Context, day time.Time) ([]quote.Quote, error)
 }
 
 func (s *Store) LatestSession(context.Context) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, "LatestSession")
 	if s.ReadErr != nil {
 		return time.Time{}, s.ReadErr

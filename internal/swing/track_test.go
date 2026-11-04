@@ -77,3 +77,23 @@ func TestScanAnalyzesStocksOnTheLatestSession(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+func TestTrackRecordSkipsSignalsWhileATradeIsOpen(t *testing.T) {
+	p := DefaultParams()
+	bars := fixture.Trend("TWO3", 400, trackDay, []int{220, 221, 222, 300})
+	if !p.Signal(bars, 220) || !p.Signal(bars, 221) {
+		t.Fatal("fixture: want signals on two days in a row")
+	}
+	records := p.TrackRecord(bars)
+	if len(records) == 0 {
+		t.Fatal("no trades")
+	}
+	for i := 1; i < len(records); i++ {
+		if records[i].SignalDay.Before(records[i-1].ExitDay) {
+			t.Errorf("trade %d signals on %v, before trade %d exits on %v", i, records[i].SignalDay, i-1, records[i-1].ExitDay)
+		}
+	}
+	if a := Analyze("TWO3", bars, p); a.Trades != len(records) {
+		t.Errorf("Analyze counts %d trades, the track record has %d", a.Trades, len(records))
+	}
+}

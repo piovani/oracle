@@ -1,5 +1,4 @@
-// Package plan builds the trading plan for the next session: the stocks to buy, how many and at
-// what prices. oracle recommend prints it and the API serves it, from the same functions.
+// Package plan builds the trading plan for the next session, for oracle recommend and the API.
 package plan
 
 import (
@@ -16,25 +15,23 @@ import (
 	"oracle/internal/yahoo"
 )
 
-// Options size the plan.
 type Options struct {
 	Capital float64 // BRL available
-	Top     int     // stocks in the plan, each getting up to Capital/Top
-	Risk    float64 // max loss per trade, in percent of Capital
-	Fill    bool    // go down the tiers until the plan has Top stocks
+	Top     int     // each stock gets up to Capital/Top
+	Risk    float64 // max loss per trade, % of Capital
+	Fill    bool    // try weaker tiers until the plan is full
 }
 
-// Row is one stock of the plan.
 type Row struct {
 	swing.Pick
 	Name string
-	Tier string // label of the tier that picked it
+	Tier string
 }
 
-// Summary is how one tier performed across every stock on the latest session, before any selection.
+// Summary is how a tier did across every stock of the latest session.
 type Summary struct {
 	Tier       swing.Tier
-	Candidates int // eligible stocks on the latest session
+	Candidates int // eligible today
 	Trades     int
 	Wins       int
 	SumReturn  float64
@@ -54,8 +51,7 @@ func (s Summary) AvgReturn() float64 {
 	return s.SumReturn / float64(s.Trades)
 }
 
-// Build tries the tiers from strongest to weakest. It stops at the first tier,
-// unless Fill is set and the plan is still short.
+// Build tries the tiers from strongest to weakest, stopping at the first unless Fill is set.
 func Build(ctx context.Context, history map[string][]quote.Quote, latest time.Time, params swing.Params, estimates *Estimates, opts Options) ([]Row, []Summary) {
 	var rows []Row
 	var summaries []Summary
@@ -85,7 +81,6 @@ func Build(ctx context.Context, history map[string][]quote.Quote, latest time.Ti
 	return rows, summaries
 }
 
-// Tiers summarizes every tier on the latest session, without building a plan.
 func Tiers(history map[string][]quote.Quote, latest time.Time, params swing.Params) []Summary {
 	summaries := make([]Summary, 0, len(swing.Tiers))
 	for _, tier := range swing.Tiers {
@@ -96,7 +91,6 @@ func Tiers(history map[string][]quote.Quote, latest time.Time, params swing.Para
 	return summaries
 }
 
-// analyzeTier runs the rule on every stock traded on the latest session.
 func analyzeTier(history map[string][]quote.Quote, latest time.Time, params swing.Params, tier swing.Tier) ([]swing.Analysis, Summary) {
 	s := Summary{Tier: tier}
 	analyses := swing.Scan(history, latest, params)
@@ -122,110 +116,123 @@ func eligibleTickers(analyses []swing.Analysis, params swing.Params) []string {
 	return tickers
 }
 
-// Estimator gives analyst targets; *yahoo.Client in production.
 type Estimator interface {
 	Estimate(ctx context.Context, ticker string) (yahoo.Estimate, error)
 }
 
-// Estimates caches the analyst targets of one session, asking for each ticker once.
-// Without a client it has no estimates and the plan ranks by history only.
-// It is safe for concurrent use; the client is called outside the lock.
+// Estimates caches analyst targets, asking for each ticker once. Without a client the plan ranks
+// by history only. Requests for a ticker already being fetched wait for that answer, so plans
+// built at the same time agree.
 type Estimates struct {
 	client Estimator
 
 	mu       sync.Mutex
 	byTicker map[string]yahoo.Estimate
-	failed   map[string]error // yahoo.ErrNoCoverage or why the request failed
-	tried    map[string]bool  // fetched or being fetched
+	failed   map[string]error
+	inFlight map[string]chan struct{}
 }
 
-var (
-	// ErrDisabled is returned by Get when there is no client to ask.
-	ErrDisabled = errors.New("analyst estimates are disabled")
-	// ErrPending is returned by Get while another request is still fetching the ticker.
-	ErrPending = errors.New("estimate still being fetched")
-)
+var ErrDisabled = errors.New("analyst estimates are disabled")
 
 func NewEstimates(client Estimator) *Estimates {
 	return &Estimates{
 		client:   client,
 		byTicker: make(map[string]yahoo.Estimate),
 		failed:   make(map[string]error),
-		tried:    make(map[string]bool),
+		inFlight: make(map[string]chan struct{}),
 	}
 }
 
-// Enabled reports whether there is a client to ask.
 func (e *Estimates) Enabled() bool { return e.client != nil }
 
-// Fetch asks the client for the tickers not tried yet. A ticker without coverage or whose request
-// failed is not asked again, except when ctx ended first: then it is tried on the next Fetch.
+// Fetch asks for the tickers not known yet. Failures are not retried, except when ctx ends first.
 func (e *Estimates) Fetch(ctx context.Context, tickers []string) {
 	if e.client == nil {
 		return
 	}
 	for _, ticker := range tickers {
-		if !e.claim(ticker) {
-			continue
+		if !e.fetch(ctx, ticker) {
+			return
 		}
+	}
+}
+
+// fetch reports false when ctx ended first.
+func (e *Estimates) fetch(ctx context.Context, ticker string) bool {
+	for {
+		known, wait, mine := e.claim(ticker)
+		switch {
+		case known:
+			return true
+		case !mine:
+			select {
+			case <-wait: // the other request may have given up
+				continue
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		estimate, err := e.client.Estimate(ctx, ticker)
 		if err != nil && ctx.Err() != nil {
-			e.release(ticker)
-			return
+			e.finish(ticker, func() {})
+			return false
 		}
 		if err != nil && !errors.Is(err, yahoo.ErrNoCoverage) {
 			log.Printf("%s: estimate skipped: %v", ticker, err)
 		}
-		e.mu.Lock()
-		if err == nil {
-			e.byTicker[ticker] = estimate
-		} else {
-			e.failed[ticker] = err
-		}
-		e.mu.Unlock()
+		e.finish(ticker, func() {
+			if err == nil {
+				e.byTicker[ticker] = estimate
+			} else {
+				e.failed[ticker] = err
+			}
+		})
+		return true
 	}
 }
 
-// Get is the estimate of one ticker, fetching it if it was not tried yet. The error is
-// ErrDisabled, yahoo.ErrNoCoverage, why the request failed, ErrPending, or ctx's error when it ended first.
 func (e *Estimates) Get(ctx context.Context, ticker string) (yahoo.Estimate, error) {
 	if e.client == nil {
 		return yahoo.Estimate{}, ErrDisabled
 	}
-	e.Fetch(ctx, []string{ticker})
-	if err := ctx.Err(); err != nil {
-		return yahoo.Estimate{}, err
+	if !e.fetch(ctx, ticker) {
+		return yahoo.Estimate{}, ctx.Err()
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if estimate, ok := e.byTicker[ticker]; ok {
 		return estimate, nil
 	}
-	if err, ok := e.failed[ticker]; ok {
-		return yahoo.Estimate{}, err
-	}
-	return yahoo.Estimate{}, ErrPending
+	return yahoo.Estimate{}, e.failed[ticker]
 }
 
-// All is a copy of the estimates fetched so far.
 func (e *Estimates) All() map[string]yahoo.Estimate {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return maps.Clone(e.byTicker)
 }
 
-func (e *Estimates) claim(ticker string) bool {
+func (e *Estimates) claim(ticker string) (known bool, wait chan struct{}, mine bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.tried[ticker] {
-		return false
+	if _, ok := e.byTicker[ticker]; ok {
+		return true, nil, false
 	}
-	e.tried[ticker] = true
-	return true
+	if _, ok := e.failed[ticker]; ok {
+		return true, nil, false
+	}
+	if ch, ok := e.inFlight[ticker]; ok {
+		return false, ch, false
+	}
+	e.inFlight[ticker] = make(chan struct{})
+	return false, nil, true
 }
 
-func (e *Estimates) release(ticker string) {
+func (e *Estimates) finish(ticker string, record func()) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	delete(e.tried, ticker)
+	record()
+	close(e.inFlight[ticker])
+	delete(e.inFlight, ticker)
 }

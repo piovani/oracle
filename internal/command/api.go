@@ -16,34 +16,60 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
-// API starts the HTTP server.
+// API starts the HTTP server. Ctrl+C stops it after the requests in flight.
 //
 //	@title			oracle API
 //	@version		1.0
 //	@description	HTTP API of the oracle, started with `oracle api`.
 //	@description	The server listens on `PORT` (default 8080) and connects to Postgres before it starts listening: if the database is unreachable, the process exits and nothing answers.
 //	@description	There is no authentication. Routes that don't exist answer 404, and known routes called with the wrong method answer 405 with an `Allow` header, both in plain text.
+//	@description	Any route answers 503 {"error": ...} when it takes longer than 9 seconds. The ticker list and the history behind the strategy and plan routes are cached until a new session is stored, so the first call after a sync is the slow one (a few seconds) and the next take milliseconds.
+//	@description	Ctrl+C (SIGINT) stops the server after the requests in flight finish.
 //	@BasePath		/
 func API(_ []string) {
-	_, app := bootstrap.Start()
+	ctx, app := bootstrap.Start()
 	defer app.Close()
 	log.Println("database connected")
 
 	server := &http.Server{
 		Addr:              ":" + app.Config.Port,
-		Handler:           newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo),
+		Handler:           withTimeout(newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo), requestTimeout),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.ListenAndServe() }()
 	log.Printf("server listening on %s", server.Addr)
-	if err := server.ListenAndServe(); err != nil {
+
+	select {
+	case err := <-serveErr:
 		app.Fatalf("server error: %v", err)
+	case <-ctx.Done():
+	}
+	log.Println("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		app.Fatalf("shutdown: %v", err)
 	}
 }
 
-// connectYahoo opens the analyst client of the plan routes.
+const (
+	requestTimeout  = 9 * time.Second // under WriteTimeout, which would just drop the connection
+	shutdownTimeout = 15 * time.Second
+)
+
+func withTimeout(next http.Handler, timeout time.Duration) http.Handler {
+	timed := http.TimeoutHandler(next, timeout, `{"error":"the request took too long, try again in a moment"}`)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only the timeout answer keeps this; the others set their own.
+		w.Header().Set("Content-Type", "application/json")
+		timed.ServeHTTP(w, r)
+	})
+}
+
 func connectYahoo(ctx context.Context) (plan.Estimator, error) {
 	client, err := yahoo.NewClient(ctx)
 	if err != nil {
@@ -53,9 +79,10 @@ func connectYahoo(ctx context.Context) (plan.Estimator, error) {
 }
 
 func newMux(store handler.StrategyReader, now func() time.Time, connect handler.Connect) *http.ServeMux {
+	histories := handler.NewHistories(store, now)
 	quotes := handler.NewQuotes(store, now)
-	strategy := handler.NewStrategy(store, now)
-	daily := handler.NewPlan(store, now, connect)
+	strategy := handler.NewStrategy(store, histories, now)
+	plans := handler.NewPlan(store, histories, now, connect)
 	mux := http.NewServeMux()
 	// Infra
 	mux.HandleFunc("GET /health", handler.Health)
@@ -78,8 +105,8 @@ func newMux(store handler.StrategyReader, now func() time.Time, connect handler.
 	mux.HandleFunc("GET /signals", strategy.Signals)
 
 	// Plan
-	mux.HandleFunc("GET /recommendations", daily.Recommendations)
-	mux.HandleFunc("GET /recommendations/tiers", daily.RecommendationTiers)
-	mux.HandleFunc("GET /tickers/{ticker}/estimate", daily.Estimate)
+	mux.HandleFunc("GET /recommendations", plans.Recommendations)
+	mux.HandleFunc("GET /recommendations/tiers", plans.RecommendationTiers)
+	mux.HandleFunc("GET /tickers/{ticker}/estimate", plans.Estimate)
 	return mux
 }

@@ -175,7 +175,11 @@ To change the strategy, go to `internal/swing`. `recommend` and `backtest` share
 
 The strategy routes call the same `internal/swing` functions as `recommend` (`Analyze`, `Scan`, `TrackRecord`), so their numbers match the CLI. `tier` defaults to `forte` and accepts the labels without accents (`medio`, `tendencia`); `years` defaults to 3, like `recommend`.
 
-The plan routes call `plan.Build`, the function `recommend` prints, with the same defaults (`capital=500`, `top=5`, `risk=2`). Analyst targets come from Yahoo Finance: the server opens one Yahoo session per trading session and caches the targets, so only the first call of a session waits for them (at most 5 s; slower targets are left for a later call). When Yahoo fails, the plan ranks by history only and says so in `analyst_estimates`.
+Every route answers `503 {"error": ...}` instead of hanging when it takes longer than 9 seconds. Ctrl+C (or the SIGINT of `docker stop`) stops the server after the requests in flight finish.
+
+Loading three years of every stock takes about two seconds on the full B3 history, so the server keeps it, and the ticker list, until a new session is stored: the first strategy or plan call after a sync waits for that load (requests arriving meanwhile share it), the next ones answer in milliseconds. On the full history (3.2 million quotes since 1986) the first call of `/tickers` takes about 2.5 s and later ones about 15 ms; `/signals` and `/recommendations` go from about 3 s to under 100 ms.
+
+The plan routes call `plan.Build`, the function `recommend` prints, with the same defaults (`capital=500`, `top=5`, `risk=2`). Analyst targets come from Yahoo Finance: the server opens one Yahoo session per trading session and caches the targets, so only the first call of a session waits for them (at most 5 s; slower targets are left for a later call). Calls at the same time wait for the same answer from Yahoo, so they get the same plan. When Yahoo fails, the plan ranks by history only and says so in `analyst_estimates`.
 
 Prices are as traded, not adjusted for splits or dividends, like everywhere else in the project.
 

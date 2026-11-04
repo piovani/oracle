@@ -18,21 +18,19 @@ const (
 	maxYears     = 30
 )
 
-// StrategyReader is the part of quote.Store the quote and strategy routes read from.
 type StrategyReader interface {
 	QuoteReader
 	History(ctx context.Context, since time.Time) (map[string][]quote.Quote, error)
 }
 
-// Strategy runs the swing rule of internal/swing, the same functions oracle recommend calls.
 type Strategy struct {
-	store StrategyReader
-	now   func() time.Time
+	store     StrategyReader
+	histories *Histories
+	now       func() time.Time
 }
 
-// NewStrategy runs the rule on the history in store; now sets where the years of history start.
-func NewStrategy(store StrategyReader, now func() time.Time) *Strategy {
-	return &Strategy{store: store, now: now}
+func NewStrategy(store StrategyReader, histories *Histories, now func() time.Time) *Strategy {
+	return &Strategy{store: store, histories: histories, now: now}
 }
 
 type strategyResponse struct {
@@ -209,18 +207,12 @@ func (h *Strategy) Trades(w http.ResponseWriter, r *http.Request) {
 //	@Failure		500		{object}	errorResponse
 //	@Router			/signals [get]
 func (h *Strategy) Signals(w http.ResponseWriter, r *http.Request) {
-	tier, since, ok := h.options(w, r)
+	tier, years, ok := h.options(w, r)
 	if !ok {
 		return
 	}
-	history, err := h.store.History(r.Context(), since)
-	if err != nil {
-		writeInternal(w, "load history", err)
-		return
-	}
-	latest := quote.LastSession(history)
-	if latest.IsZero() {
-		writeError(w, http.StatusNotFound, "no stock quotes stored in the period, run oracle sync")
+	history, latest, ok := loadHistory(w, r, h.histories, years)
+	if !ok {
 		return
 	}
 
@@ -248,12 +240,12 @@ func (h *Strategy) Signals(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// stock reads the options and the quotes of the stock in the path, answering the error itself when it can't.
 func (h *Strategy) stock(w http.ResponseWriter, r *http.Request) (swing.Tier, []quote.Quote, bool) {
-	tier, since, ok := h.options(w, r)
+	tier, years, ok := h.options(w, r)
 	if !ok {
 		return swing.Tier{}, nil, false
 	}
+	since := h.now().AddDate(-years, 0, 0)
 	name := pathTicker(r)
 	ticker, ok := loadTicker(w, r, h.store, name)
 	if !ok {
@@ -275,27 +267,22 @@ func (h *Strategy) stock(w http.ResponseWriter, r *http.Request) (swing.Tier, []
 	return tier, bars, true
 }
 
-// options reads the tier and years query parameters, answering 400 itself when they are invalid.
-func (h *Strategy) options(w http.ResponseWriter, r *http.Request) (swing.Tier, time.Time, bool) {
-	tier := swing.Tiers[0]
+func (*Strategy) options(w http.ResponseWriter, r *http.Request) (tier swing.Tier, years int, ok bool) {
+	tier = swing.Tiers[0]
 	if label := r.URL.Query().Get("tier"); label != "" {
-		found, ok := findTier(label)
-		if !ok {
+		found, known := findTier(label)
+		if !known {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown tier %q: use forte, médio, fraco or tendência", label))
-			return swing.Tier{}, time.Time{}, false
+			return swing.Tier{}, 0, false
 		}
 		tier = found
 	}
-	years, ok := queryYears(w, r)
-	if !ok {
-		return swing.Tier{}, time.Time{}, false
-	}
-	return tier, h.now().AddDate(-years, 0, 0), true
+	years, ok = queryYears(w, r)
+	return tier, years, ok
 }
 
 var unaccent = strings.NewReplacer("é", "e", "ê", "e")
 
-// findTier matches a tier label, ignoring case and accents.
 func findTier(label string) (swing.Tier, bool) {
 	want := unaccent.Replace(strings.ToLower(label))
 	for _, t := range swing.Tiers {
@@ -306,7 +293,6 @@ func findTier(label string) (swing.Tier, bool) {
 	return swing.Tier{}, false
 }
 
-// tierParams are the default parameters with the oversold level of the tier, as recommend sets them.
 func tierParams(tier swing.Tier) swing.Params {
 	p := swing.DefaultParams()
 	p.Oversold = tier.Oversold
@@ -333,10 +319,8 @@ func newAnalysis(a swing.Analysis, last quote.Quote, tier swing.Tier) analysisRe
 	return body
 }
 
-// cents rounds a price to cents, as B3 quotes it.
 func cents(v float64) float64 { return math.Round(v*100) / 100 }
 
-// fraction rounds a rate or a return to 4 decimals, a hundredth of a percent.
 func fraction(v float64) float64 { return math.Round(v*1e4) / 1e4 }
 
 func compareDesc(a, b float64) int {

@@ -1,3 +1,4 @@
+// Package handler has the HTTP routes of oracle api.
 package handler
 
 import (
@@ -14,7 +15,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false) // JSON, not HTML: keep "RSI(2) < 10" readable
+	enc.SetEscapeHTML(false) // keep "RSI(2) < 10" readable
 	if err := enc.Encode(body); err != nil {
 		log.Printf("failed to write response: %v", err)
 	}
@@ -24,7 +25,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, errorResponse{Error: msg})
 }
 
-// writeInternal logs the cause under a fixed operation name and answers 500 without exposing it.
+// writeInternal logs the error and hides it from the client.
 func writeInternal(w http.ResponseWriter, op string, err error) {
 	log.Printf("%s: %v", op, err)
 	writeError(w, http.StatusInternalServerError, "internal error")

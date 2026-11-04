@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"oracle/internal/quote"
 )
 
-// QuoteReader is the part of quote.Store the quote routes read from.
 type QuoteReader interface {
 	Tickers(ctx context.Context) ([]quote.Ticker, error)
 	Ticker(ctx context.Context, ticker string) (quote.Ticker, error)
@@ -20,13 +20,16 @@ type QuoteReader interface {
 	LatestSession(ctx context.Context) (time.Time, error)
 }
 
-// Quotes serves the stored B3 quotes.
 type Quotes struct {
 	store QuoteReader
 	now   func() time.Time
+
+	// listing tickers groups the whole table, so keep it until a new session
+	mu            sync.Mutex
+	tickers       []tickerResponse
+	tickersStored time.Time
 }
 
-// NewQuotes serves the quotes in store; now tells whether the latest session is stale.
 func NewQuotes(store QuoteReader, now func() time.Time) *Quotes {
 	return &Quotes{store: store, now: now}
 }
@@ -70,12 +73,26 @@ type sessionResponse struct {
 //	@Summary		List tickers
 //	@Description	Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.
 //	@Description	Name, spec and ISIN come from the latest quote of each ticker. An empty database answers an empty list.
+//	@Description	The list is cached until a new session is stored.
 //	@Tags			quotes
 //	@Produce		json
 //	@Success		200	{array}		tickerResponse
 //	@Failure		500	{object}	errorResponse
 //	@Router			/tickers [get]
 func (h *Quotes) Tickers(w http.ResponseWriter, r *http.Request) {
+	stored, err := h.store.LatestSession(r.Context())
+	if err != nil {
+		writeInternal(w, "latest session", err)
+		return
+	}
+	h.mu.Lock()
+	cached, cachedFor := h.tickers, h.tickersStored
+	h.mu.Unlock()
+	if cached != nil && cachedFor.Equal(stored) {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	tickers, err := h.store.Tickers(r.Context())
 	if err != nil {
 		writeInternal(w, "list tickers", err)
@@ -85,6 +102,9 @@ func (h *Quotes) Tickers(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tickers {
 		body = append(body, newTicker(t))
 	}
+	h.mu.Lock()
+	h.tickers, h.tickersStored = body, stored
+	h.mu.Unlock()
 	writeJSON(w, http.StatusOK, body)
 }
 
@@ -214,7 +234,6 @@ func (h *Quotes) SessionQuotes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newQuotes(quotes))
 }
 
-// loadTicker loads a ticker, answering 404 or 500 itself when it can't.
 func loadTicker(w http.ResponseWriter, r *http.Request, store QuoteReader, name string) (quote.Ticker, bool) {
 	ticker, err := store.Ticker(r.Context(), name)
 	switch {
@@ -278,7 +297,7 @@ func newQuotes(quotes []quote.Quote) []quoteResponse {
 	return body
 }
 
-// spec collapses the fixed-width padding of the B3 spec: "PN      N2" becomes "PN N2".
+// spec turns "PN      N2" into "PN N2".
 func spec(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }

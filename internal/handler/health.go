@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 )
@@ -24,12 +22,8 @@ type healthResponse struct {
 //	@Failure		405	{string}	string	"Method Not Allowed: only GET and HEAD are accepted (Allow: GET, HEAD)"
 //	@Router			/health [get]
 func Health(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(healthResponse{
+	writeJSON(w, http.StatusOK, healthResponse{
 		Status: "ok",
 		Time:   time.Now().UTC().Format(time.RFC3339),
 	})
-	if err != nil {
-		log.Printf("health: failed to write response: %v", err)
-	}
 }

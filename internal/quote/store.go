@@ -22,20 +22,16 @@ type Store interface {
 	SaveFile(ctx context.Context, name string, load func(save func(Quote) error) error) (int, error)
 	// History loads the stocks (specs ON, PN and UNT) quoted since the given day, by ticker and in date order.
 	History(ctx context.Context, since time.Time) (map[string][]Quote, error)
-	// Tickers summarizes every ticker stored, of any spec, in ticker order.
+	// Tickers, Ticker, TickerQuotes and Session cover every spec, not only stocks.
 	Tickers(ctx context.Context) ([]Ticker, error)
-	// Ticker summarizes one ticker, or returns ErrUnknownTicker when it has no quotes.
 	Ticker(ctx context.Context, ticker string) (Ticker, error)
-	// TickerQuotes loads the quotes of one ticker from one day to another, both included, in date order.
-	// A zero day leaves that end open; an unknown ticker has no quotes.
+	// TickerQuotes includes both days; a zero day leaves that end open.
 	TickerQuotes(ctx context.Context, ticker string, from, to time.Time) ([]Quote, error)
-	// Session loads every quote of one day, of any spec, in ticker order.
 	Session(ctx context.Context, day time.Time) ([]Quote, error)
-	// LatestSession is the last day with quotes, or the zero time when there are none.
 	LatestSession(ctx context.Context) (time.Time, error)
 }
 
-// Ticker summarizes the quotes stored for one ticker. Name, Spec and ISIN come from its latest quote.
+// Ticker sums up a ticker; Name, Spec and ISIN come from its latest quote.
 type Ticker struct {
 	Ticker   string
 	Name     string
@@ -46,15 +42,12 @@ type Ticker struct {
 	Sessions int
 }
 
-// ErrUnknownTicker is returned by Store.Ticker for a ticker without quotes.
 var ErrUnknownTicker = errors.New("unknown ticker")
 
-// IsStock reports whether a spec is a stock (ON, PN or UNT), the only series the strategy runs on.
 func IsStock(spec string) bool {
 	return strings.HasPrefix(spec, "ON") || strings.HasPrefix(spec, "PN") || strings.HasPrefix(spec, "UNT")
 }
 
-// LastSession is the latest day in a history, or the zero time when it is empty.
 func LastSession(history map[string][]Quote) time.Time {
 	var latest time.Time
 	for _, bars := range history {
@@ -65,8 +58,7 @@ func LastSession(history map[string][]Quote) time.Time {
 	return latest
 }
 
-// StaleAfter is how old the latest session can be before the data is out of date:
-// longer than a weekend plus a holiday means a sync is missing.
+// StaleAfter: older than a weekend plus a holiday means a sync is missing.
 const StaleAfter = 4 * 24 * time.Hour
 
 // Source is where the B3 files come from; *b3.Client in production.

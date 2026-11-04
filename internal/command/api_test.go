@@ -30,7 +30,7 @@ func stored() *mock.Store {
 	}}
 }
 
-// now is 5 days after the last session in stored(), so it is stale.
+// now is 5 days after the last session in stored().
 func now() time.Time { return fixture.Day(2026, 11, 4) }
 
 func serve(t *testing.T, store *mock.Store, path string) *httptest.ResponseRecorder {
@@ -107,7 +107,6 @@ func TestQuoteRoutesHideStoreErrors(t *testing.T) {
 	}
 }
 
-// failQuotes fails only TickerQuotes, after Ticker found the ticker.
 type failQuotes struct{ *mock.Store }
 
 func (failQuotes) TickerQuotes(_ context.Context, _ string, _, _ time.Time) ([]quote.Quote, error) {
@@ -133,5 +132,54 @@ func TestHealthAndSwaggerRoutes(t *testing.T) {
 	}
 	if rec := serve(t, &mock.Store{}, "/tickers/PETR4/unknown"); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown route: got %d", rec.Code)
+	}
+}
+
+func TestTickersAreCachedUntilANewSession(t *testing.T) {
+	store := stored()
+	mux := newMux(store, now, nil)
+	first := get(t, mux, "/tickers").Body.String()
+	for range 3 {
+		get(t, mux, "/tickers")
+	}
+	if n := countCalls(store, "Tickers"); n != 1 {
+		t.Errorf("listed tickers %d times, want once for the same session", n)
+	}
+	store.Quotes = append(store.Quotes, quote.Quote{Ticker: "NEW3", Spec: "ON", Date: fixture.Day(2026, 10, 31), Close: 10})
+	rec := get(t, mux, "/tickers")
+	if n := countCalls(store, "Tickers"); n != 2 || !strings.Contains(rec.Body.String(), `"ticker":"NEW3"`) || rec.Body.String() == first {
+		t.Errorf("after a new session: %d listings, body %s", n, rec.Body.String())
+	}
+}
+
+func countCalls(store *mock.Store, method string) int {
+	n := 0
+	for _, c := range store.Calls {
+		if c == method {
+			n++
+		}
+	}
+	return n
+}
+
+func TestRequestTimeout(t *testing.T) {
+	slow := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // a query canceled with the request
+	})
+	rec := httptest.NewRecorder()
+	withTimeout(slow, 20*time.Millisecond).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/signals", http.NoBody))
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Content-Type") != "application/json" ||
+		strings.TrimSpace(rec.Body.String()) != `{"error":"the request took too long, try again in a moment"}` {
+		t.Errorf("got %d %q %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+	}
+
+	page := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html></html>"))
+	})
+	rec = httptest.NewRecorder()
+	withTimeout(page, time.Second).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/swagger/index.html", http.NoBody))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Errorf("page: got %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
 }

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "oracle API",
-    "description": "HTTP API of the oracle, started with `go run ./cmd/oracle api` (or the `api` command of the Docker image).\n\nThe server listens on the port in `PORT` (default `8080`) and connects to Postgres with the `DB_*` variables before it starts listening: if the database is unreachable, the process exits and nothing answers.\n\nThere is no authentication. Responses are JSON unless noted; routes that don't exist answer `404` and known routes called with the wrong method answer `405` with an `Allow` header, both in plain text.\n\nSet `baseUrl` to the server you are calling. The default points at a local run.",
+    "description": "HTTP API of the oracle, started with `go run ./cmd/oracle api` (or the `api` command of the Docker image).\n\nThe server listens on the port in `PORT` (default `8080`) and connects to Postgres with the `DB_*` variables before it starts listening: if the database is unreachable, the process exits and nothing answers.\n\nThere is no authentication. Responses are JSON unless noted; routes that don't exist answer `404` and known routes called with the wrong method answer `405` with an `Allow` header, both in plain text.\n\nSet `baseUrl` to the server you are calling. The default points at a local run.\n\nAny route answers `503` with `{\"error\": \"the request took too long, try again in a moment\"}` when it takes longer than 9 seconds. The ticker list and the history behind the strategy and plan routes are cached until a new session is stored: the first call after a sync takes a few seconds, the next ones milliseconds.\n\nCtrl+C (SIGINT) stops the server after the requests in flight finish.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -79,7 +79,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\"status\":\"ok\",\"time\":\"2026-11-01T23:04:02Z\"}\n"
+              "body": "{\"status\":\"ok\",\"time\":\"2026-11-01T23:55:58Z\"}\n"
             },
             {
               "name": "405 Method Not Allowed",
@@ -137,7 +137,7 @@
                 "tickers"
               ]
             },
-            "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\n\n`name`, `spec` and `isin` come from the latest quote of each ticker; `spec` has B3's padding collapsed (`PN N2`). `first_session` and `last_session` are `YYYY-MM-DD`; `sessions` counts the days with a quote.\n\nAn empty database answers `[]`. A database failure answers `500` with `{\"error\":\"internal error\"}`. Read only."
+            "description": "Every ticker with quotes in the database, of any spec (stocks, real estate funds, ETFs, BDRs), in ticker order.\n\n`name`, `spec` and `isin` come from the latest quote of each ticker; `spec` has B3's padding collapsed (`PN N2`). `first_session` and `last_session` are `YYYY-MM-DD`; `sessions` counts the days with a quote.\n\nAn empty database answers `[]`. The list is cached until a new session is stored: on the full B3 history the first call takes a few seconds, the next ones milliseconds. A database failure answers `500` with `{\"error\":\"internal error\"}`. Read only."
           },
           "event": [
             {

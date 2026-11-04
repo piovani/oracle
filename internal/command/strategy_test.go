@@ -14,7 +14,6 @@ import (
 	"oracle/test/mock"
 )
 
-// strategyDay is the latest session of strategyStore, 5 days before now().
 var strategyDay = fixture.Day(2026, 10, 30)
 
 func strategyStore() *mock.Store {
@@ -27,6 +26,7 @@ func strategyStore() *mock.Store {
 		fixture.Trend("WIN3", 400, strategyDay, fixture.Dips(5), fixture.StrongPullback...), // forte
 		fixture.Trend("MED3", 400, strategyDay, fixture.Dips(5), fixture.MildPullback...),   // médio
 		fixture.Trend("FLAT3", 400, strategyDay, nil),                                       // no signal
+		fixture.Trend("NEW3", 400, strategyDay, fixture.Dips(2), fixture.StrongPullback...), // forte, but 2 trades: not eligible
 		fixture.Trend("OLD3", 400, fixture.Day(2024, 6, 28), fixture.Dips(5), fixture.StrongPullback...),
 		fund,
 	} {
@@ -76,7 +76,6 @@ func TestStrategyParamsAndTiers(t *testing.T) {
 	}
 }
 
-// The API must answer what swing.Analyze answers, the function oracle recommend calls.
 func TestAnalysisIsWhatRecommendComputes(t *testing.T) {
 	store := strategyStore()
 	rec := serve(t, store, "/tickers/win3/analysis")
@@ -180,18 +179,22 @@ func TestSignals(t *testing.T) {
 	for _, s := range got.Signals {
 		tickers = append(tickers, s.Ticker)
 	}
-	// OLD3 did not trade on the latest session and XPML11 is not a stock: neither is a candidate.
+	// OLD3 is off the latest session and XPML11 is not a stock; NEW3 is not eligible, so it's last.
 	if rec.Code != http.StatusOK || got.Session != "2026-10-30" || got.Tier != "médio" || got.Rule != "RSI(2) < 30" ||
-		strings.Join(tickers, ",") != "MED3,WIN3" && strings.Join(tickers, ",") != "WIN3,MED3" {
+		strings.Join(tickers, ",") != "MED3,WIN3,NEW3" {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
 	for i, s := range got.Signals {
-		if !s.Eligible || s.Levels == nil || (i > 0 && s.Expectancy > got.Signals[i-1].Expectancy) {
-			t.Errorf("signal %d: %+v, want eligible signals by expectancy", i, s)
+		if s.Eligible != (s.Ticker != "NEW3") || s.Levels == nil || (i > 0 && s.Eligible && s.Expectancy > got.Signals[i-1].Expectancy) {
+			t.Errorf("signal %d: %+v, want eligible signals by expectancy, then the rest", i, s)
 		}
 	}
-	if rec := serve(t, strategyStore(), "/signals"); !strings.Contains(rec.Body.String(), `"signals":[{"ticker":"WIN3"`) {
-		t.Errorf("forte: got %s, want only WIN3", rec.Body.String())
+	forte := decode[struct {
+		Signals []analysisBody `json:"signals"`
+	}](t, serve(t, strategyStore(), "/signals"))
+	if len(forte.Signals) != 2 || forte.Signals[0].Ticker != "WIN3" || !forte.Signals[0].Eligible ||
+		forte.Signals[1].Ticker != "NEW3" || forte.Signals[1].Eligible {
+		t.Errorf("forte: got %+v, want WIN3 (eligible) then NEW3 (not eligible)", forte.Signals)
 	}
 }
 

@@ -17,25 +17,19 @@ import (
 )
 
 const (
-	// estimatesBudget bounds the analyst requests of one API call, inside the server's write timeout.
-	// Tickers left out are fetched on a later call.
-	estimatesBudget = 5 * time.Second
-	// reconnectAfter is how long to wait for a new Yahoo session after one failed.
-	reconnectAfter = 10 * time.Minute
+	estimatesBudget = 5 * time.Second // tickers left out are fetched on a later call
+	reconnectAfter  = 10 * time.Minute
 )
 
-// Connect opens a client for analyst targets; yahoo.NewClient in production.
 type Connect func(ctx context.Context) (plan.Estimator, error)
 
-// Plan serves the trading plan of oracle recommend, built by the same functions.
-//
-// Analyst targets are cached for the latest session: a new session opens a new Yahoo client
-// and starts an empty cache, so a long-running server neither reconnects on every call nor
-// keeps an expired session or old targets.
+// Plan serves the plan of oracle recommend. Each new session gets a new Yahoo client and an empty
+// cache, so the server doesn't reconnect on every call nor keep an expired Yahoo session.
 type Plan struct {
-	store   StrategyReader
-	now     func() time.Time
-	connect Connect // nil: rank by history only
+	store     StrategyReader
+	histories *Histories
+	now       func() time.Time
+	connect   Connect // nil ranks by history only
 
 	mu        sync.Mutex
 	session   time.Time
@@ -43,9 +37,8 @@ type Plan struct {
 	retryAt   time.Time
 }
 
-// NewPlan serves the plan from store; connect opens the analyst client, nil to go without it.
-func NewPlan(store StrategyReader, now func() time.Time, connect Connect) *Plan {
-	return &Plan{store: store, now: now, connect: connect}
+func NewPlan(store StrategyReader, histories *Histories, now func() time.Time, connect Connect) *Plan {
+	return &Plan{store: store, histories: histories, now: now, connect: connect}
 }
 
 type estimateResponse struct {
@@ -133,7 +126,7 @@ func (h *Plan) Recommendations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	history, latest, ok := h.history(w, r, years)
+	history, latest, ok := loadHistory(w, r, h.histories, years)
 	if !ok {
 		return
 	}
@@ -183,7 +176,7 @@ func (h *Plan) RecommendationTiers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	history, latest, ok := h.history(w, r, years)
+	history, latest, ok := loadHistory(w, r, h.histories, years)
 	if !ok {
 		return
 	}
@@ -212,8 +205,11 @@ func (h *Plan) Estimate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	last, err := h.store.TickerQuotes(r.Context(), ticker.Ticker, ticker.Last, ticker.Last)
-	if err != nil || len(last) == 0 {
-		writeInternal(w, "load latest quote", fmt.Errorf("%s on %s: %d quotes, %w", name, ticker.Last.Format(time.DateOnly), len(last), err))
+	if err == nil && len(last) == 0 {
+		err = fmt.Errorf("no quote on its last session %s", ticker.Last.Format(time.DateOnly))
+	}
+	if err != nil {
+		writeInternal(w, "load latest quote of "+ticker.Ticker, err)
 		return
 	}
 	latest, err := h.store.LatestSession(r.Context())
@@ -243,30 +239,14 @@ func (h *Plan) Estimate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// history loads the stocks of the last years, answering 404 or 500 itself when it can't.
-func (h *Plan) history(w http.ResponseWriter, r *http.Request, years int) (map[string][]quote.Quote, time.Time, bool) {
-	history, err := h.store.History(r.Context(), h.now().AddDate(-years, 0, 0))
-	if err != nil {
-		writeInternal(w, "load history", err)
-		return nil, time.Time{}, false
-	}
-	latest := quote.LastSession(history)
-	if latest.IsZero() {
-		writeError(w, http.StatusNotFound, "no stock quotes stored in the period, run oracle sync")
-		return nil, time.Time{}, false
-	}
-	return history, latest, true
-}
-
-// estimatesFor is the analyst cache of the session, connecting to Yahoo on the first call of a new
-// session. Without estimates, or while Yahoo is unavailable, it has no client.
 func (h *Plan) estimatesFor(ctx context.Context, session time.Time, enabled bool) *plan.Estimates {
 	if !enabled || h.connect == nil {
 		return plan.NewEstimates(nil)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if !h.session.Equal(session) {
+	// Only move forward: the last day with stocks can be before the last day with any quote.
+	if session.After(h.session) {
 		h.session, h.estimates, h.retryAt = session, nil, time.Time{}
 	}
 	if h.estimates == nil {
@@ -286,11 +266,9 @@ func (h *Plan) estimatesFor(ctx context.Context, session time.Time, enabled bool
 	return h.estimates
 }
 
-// planOptions reads the query parameters of /recommendations, answering 400 itself when one is invalid.
 func planOptions(w http.ResponseWriter, r *http.Request) (opts plan.Options, years int, estimates, ok bool) {
 	q := r.URL.Query()
 	opts = plan.Options{Capital: 500, Top: 5, Risk: 2} // as oracle recommend
-	estimates = true
 	var err error
 	if opts.Capital, err = queryFloat(q.Get("capital"), opts.Capital, 0, false); err != nil {
 		writeError(w, http.StatusBadRequest, "capital "+err.Error())
@@ -306,16 +284,13 @@ func planOptions(w http.ResponseWriter, r *http.Request) (opts plan.Options, yea
 			return opts, 0, false, false
 		}
 	}
-	for _, b := range []struct {
-		name string
-		dst  *bool
-	}{{"fill", &opts.Fill}, {"estimates", &estimates}} {
-		if v := q.Get(b.name); v != "" {
-			if *b.dst, err = strconv.ParseBool(v); err != nil {
-				writeError(w, http.StatusBadRequest, fmt.Sprintf("%s %q must be true or false", b.name, v))
-				return opts, 0, false, false
-			}
-		}
+	if opts.Fill, err = queryBool(q.Get("fill"), false); err != nil {
+		writeError(w, http.StatusBadRequest, "fill "+err.Error())
+		return opts, 0, false, false
+	}
+	if estimates, err = queryBool(q.Get("estimates"), true); err != nil {
+		writeError(w, http.StatusBadRequest, "estimates "+err.Error())
+		return opts, 0, false, false
 	}
 	if years, ok = queryYears(w, r); !ok {
 		return opts, 0, false, false
@@ -323,7 +298,6 @@ func planOptions(w http.ResponseWriter, r *http.Request) (opts plan.Options, yea
 	return opts, years, estimates, true
 }
 
-// queryFloat parses a positive number, up to limit when bounded.
 func queryFloat(value string, fallback, limit float64, bounded bool) (float64, error) {
 	if value == "" {
 		return fallback, nil
@@ -340,7 +314,17 @@ func queryFloat(value string, fallback, limit float64, bounded bool) (float64, e
 	return v, nil
 }
 
-// queryYears reads the years query parameter, answering 400 itself when it is invalid.
+func queryBool(value string, fallback bool) (bool, error) {
+	if value == "" {
+		return fallback, nil
+	}
+	v, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%q must be true or false", value)
+	}
+	return v, nil
+}
+
 func queryYears(w http.ResponseWriter, r *http.Request) (int, bool) {
 	value := r.URL.Query().Get("years")
 	if value == "" {
