@@ -31,6 +31,8 @@ linter cannot see the problem (for example across packages or at runtime).
   `tendência`) is Portuguese; code, comments, README and docs are English.
 - **API docs.** A route change updates its swag annotations (`make swag`, committed
   `docs/`), the Postman collection `docs/postman-collection.json` and the README.
+- **Flow diagram.** A new or removed command, package or route, or a changed invariant, updates
+  `docs/flow.html` (the `flow-diagram` skill) and the Architecture section of `CLAUDE.md`.
 
 ## Correctness
 

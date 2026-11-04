@@ -37,7 +37,9 @@ When Docker is running (`docker info` succeeds), also run `make coverage` (unit 
 must stay ≥ 90%). If routes or swag annotations changed, run `make swag` and check that
 `git status --porcelain -- docs/` shows nothing new; if `internal/command/api.go` or
 `internal/handler` changed, run
-`python3 -I .claude/skills/postman-collection/scripts/api.py check`.
+`python3 -I .claude/skills/postman-collection/scripts/api.py check`. If a command, package or
+route changed, also run `python3 -I .claude/skills/flow-diagram/scripts/flow.py check`, which
+compares `docs/flow.html` with the code.
 
 A tool that cannot run (no network, no Docker) is reported as **not run**, with the reason;
 never as passed. `make lint` enables ~60 linters (see `.golangci.yml`): do not re-report each

@@ -261,9 +261,10 @@ section > p { max-width: 68ch; color: var(--muted); }
     { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "ON, PN and unit stocks only",        flows: ["recommend", "backtest", "api"] },
     { id: "yahoo",  x: 110, y: 440, t: "Yahoo Finance",      s: "analyst price targets",       kind: "external", flows: ["recommend"] },
     { id: "rec",    x: 110, y: 550, t: "oracle recommend",   s: "plan.Build · forte → tendência", flows: ["recommend"] },
+    { id: "plan",   x: 630, y: 440, t: "internal/plan",      s: "Build · tiers · Estimates",      flows: ["recommend", "api"] },
     { id: "bt",     x: 630, y: 550, t: "internal/backtest",  s: "prepare → simulate",             flows: ["backtest"] },
     { id: "swing",  x: 370, y: 660, t: "internal/swing",     s: "Signal · Levels · Simulate · Rank", kind: "shared", flows: ["recommend", "backtest", "api"] },
-    { id: "plan",   x: 110, y: 760, t: "Daily plan",       s: "buy limit · target · stop",      flows: ["recommend"] },
+    { id: "daily",  x: 110, y: 760, t: "Daily plan",       s: "buy limit · target · stop",      flows: ["recommend"] },
     { id: "report", x: 630, y: 760, t: "Report + CSV",    s: "return, max drawdown, Sharpe",    flows: ["backtest"] }
   ];
   var edges = [
@@ -275,6 +276,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     { d: "M200 328 L200 282",                 flows: ["api"] },
     { d: "M310 250 L345 250 L345 350 L368 350", flows: ["api"] },
     { d: "M90 250 L50 250 L50 710 L368 710",  flows: ["api"] },
+    { d: "M590 470 L628 470",                 flows: ["recommend", "api"] },
     { d: "M420 500 L420 580 L332 580",        flows: ["recommend"] },
     { d: "M540 500 L540 580 L628 580",        flows: ["backtest"] },
     { d: "M220 500 L220 548",                 flows: ["recommend"] },
@@ -329,7 +331,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     recommend: {
       title: "make recommend",
       items: [
-        "<code>Store.History</code> loads 3 years of ON, PN and unit stocks, and the command warns if the latest session in the database is stale. From here on <code>plan.Build</code> does the work.",
+        "<code>Store.History</code> loads 3 years of ON, PN and unit stocks, and the command warns if the latest session in the database is stale. From here on <code>internal/plan</code> does the work, with <code>plan.Build</code>.",
         "Only stocks that traded on the latest session are considered. <code>swing.Scan</code> drops those with median volume below R$5M, simulates the rule over the history and checks for a signal today.",
         "A stock is eligible if it has a signal today, at least 5 trades in its history and positive expectancy.",
         "For eligible stocks, it fetches the price target from Yahoo Finance. A target below the current price drops the stock. If Yahoo fails, it continues with the history only.",
@@ -350,7 +352,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     api: {
       title: "oracle api",
       items: [
-        "Serves on <code>PORT</code> (default 8080). Every route is a read-only <code>GET</code> that answers JSON; Swagger UI is at <code>/swagger/index.html</code>.",
+        "Serves on <code>PORT</code> (default 8080). <code>/health</code> answers that the server is up. Every route is a read-only <code>GET</code> that answers JSON; Swagger UI is at <code>/swagger/index.html</code>.",
         "Quote routes (<code>/tickers</code>, <code>/sessions</code>) read through <code>quote.Store</code> and cover every spec, funds and ETFs included.",
         "Strategy routes (<code>/strategy</code>, <code>/signals</code>, <code>/tickers/{ticker}/analysis</code> and <code>/trades</code>) call the same <code>internal/swing</code> functions as <code>recommend</code>, so the numbers match the CLI.",
         "Plan routes (<code>/recommendations</code>, <code>/tickers/{ticker}/estimate</code>) call <code>plan.Build</code>. The server keeps one Yahoo session and its targets per trading session; if Yahoo fails, the plan ranks by history only.",

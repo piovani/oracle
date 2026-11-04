@@ -105,7 +105,7 @@ The binary also takes `-warmup`, `-lookback`, `-oversold` and `-min-volume`. The
 
 ## Project layout
 
-See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect.
+See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect. When a command, package, route or invariant changes, the `flow-diagram` skill (`.claude/skills/flow-diagram`) updates the diagram and the docs that describe it, and the `postman-collection` skill does the same for the Postman collection. The `go-reviewer` skill reviews Go code against the project rules, and checks that these docs are up to date.
 
 ```
 cmd/oracle/    the single binary; the first argument picks the command
@@ -204,7 +204,7 @@ The API is documented in `docs/postman-collection.json` (Postman Collection v2.1
 postman collection run docs/postman-collection.json --env-var baseUrl=http://localhost:8080
 ```
 
-`baseUrl` defaults to `http://localhost:8080`. When a route is added or changed, update its request and examples in the collection in the same change.
+`baseUrl` defaults to `http://localhost:8080`. When a route is added or changed, update its request and examples in the collection in the same change; the `postman-collection` skill (`.claude/skills/postman-collection`) does it and checks the collection against the routes.
 
 ## Docker
 
