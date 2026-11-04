@@ -61,10 +61,10 @@ func Dips(n int) []int {
 	return idx
 }
 
-// Round rounds to cents, the precision B3 publishes and the database stores.
+// Round rounds to cents, like B3 prices.
 func Round(v float64) float64 { return math.Round(v*100) / 100 }
 
-// Day is a date at midnight UTC, how quote dates are stored.
+// Day is a date at midnight UTC.
 func Day(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, time.UTC) }
 
 // Today is the current date at midnight UTC.

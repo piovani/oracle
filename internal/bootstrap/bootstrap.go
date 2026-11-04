@@ -19,8 +19,8 @@ type App struct {
 	stop   context.CancelFunc
 }
 
-// Start loads the configuration and connects to the database, exiting on failure.
-// The returned context is canceled when the user presses Ctrl+C.
+// Start loads the config and connects to the database, exiting on failure.
+// The context is canceled on Ctrl+C.
 func Start() (context.Context, *App) {
 	cfg := config.Load()
 
@@ -33,14 +33,12 @@ func Start() (context.Context, *App) {
 	return ctx, &App{Config: cfg, DB: database, stop: stop}
 }
 
-// Fatalf releases the resources and exits, like log.Fatalf.
-// Commands use it instead of log.Fatalf, which would skip the deferred Close.
+// Fatalf is log.Fatalf that runs Close first, which a plain log.Fatalf would skip.
 func (a *App) Fatalf(format string, args ...any) {
 	a.Close()
 	log.Fatalf(format, args...)
 }
 
-// Close releases the database connection and the Ctrl+C handler.
 func (a *App) Close() {
 	a.stop()
 	if sqlDB, err := a.DB.DB(); err == nil {
