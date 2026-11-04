@@ -233,3 +233,43 @@ func TestAPIRespondsWhenTheCacheFails(t *testing.T) {
 		t.Errorf("got %d %s, want the answer without the cache", rec.Code, rec.Body)
 	}
 }
+
+func TestMetricsMuxServesPrometheusAndNothingElse(t *testing.T) {
+	mux := metricsMux()
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "go_goroutines") {
+		t.Errorf("/metrics: %d, %.80q", rec.Code, rec.Body)
+	}
+	for _, path := range []string{"/tickers", "/health", "/"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s on the metrics port answered %d, want 404: the API must not leak there", path, rec.Code)
+		}
+	}
+}
+
+func TestMetricsCountTheRoutesOfTheRealMux(t *testing.T) {
+	h := withTelemetry(newMux(stored(), now, nil, &mock.Cache{}))
+	for range 2 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/tickers/PETR4", http.NoBody))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answered %d", rec.Code)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	metricsMux().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody))
+	out := rec.Body.String()
+	for _, want := range []string{
+		`oracle_http_requests_total{method="GET",route="GET /tickers/{ticker}",status="200"}`,
+		`oracle_cache_requests_total{result="hit",route="GET /tickers/{ticker}"}`,
+		`oracle_cache_requests_total{result="miss",route="GET /tickers/{ticker}"}`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+}

@@ -54,6 +54,9 @@ Everything comes from `.env` (or environment variables). The defaults match `doc
 | `REDIS_DB` | `0` |
 | `REDIS_PREFIX` | `oracle:cache:` (starts every key, so environments can share one Redis) |
 | `PORT` | `8080` (used only by the API) |
+| `METRICS_PORT` | `9100` (where Prometheus scrapes `/metrics`; used only by the API) |
+| `LOG_FORMAT` | `text` (`json` for JSON lines on stderr) |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | unset: nothing is sent (see [Monitoring](#monitoring)) |
 | `ENV` | `development` |
 
 ## Trading plan
@@ -133,6 +136,8 @@ internal/
   bootstrap/   startup shared by every command
   b3/          COTAHIST file reader
   cache/       Redis cache of the API answers, emptied by sync
+  telemetry/   Prometheus metrics, structured logs and OpenTelemetry traces
+monitoring/    configuration of Prometheus, Loki, Tempo and Grafana (and the dashboard)
   quote/       quote model, sync and history loading
   swing/       the strategy: signal, order prices, simulation, ranking, scan and track record
   plan/        the trading plan (tiers, analyst estimates, sizing), shared by recommend and the API
@@ -237,6 +242,66 @@ postman collection run docs/postman-collection.json --env-var baseUrl=http://loc
 ```
 
 `baseUrl` defaults to `http://localhost:8080`. When a route is added or changed, update its request and examples in the collection in the same change; the `postman-collection` skill (`.claude/skills/postman-collection`) does it and checks the collection against the routes.
+
+## Monitoring
+
+Metrics, logs and traces of the API, in Grafana. The stack is optional and runs in Docker, next to Postgres and Redis:
+
+```
+make monitoring         # Prometheus, Loki, Tempo, Grafana and the Postgres and Redis exporters
+make monitoring-down
+```
+
+<p align="center">
+  <a href="docs/grafana-dashboard.jpg"><img src="docs/grafana-dashboard.jpg" alt="Grafana dashboard Oracle API: requests per second, errors, p95 latency, cache hit ratio and latency by route" width="860"></a>
+</p>
+
+Where to open each piece (all on your machine, started by `make monitoring`):
+
+| Service | Host | User | Password |
+|---|---|---|---|
+| **Grafana** (dashboard **Oracle API**) | <http://localhost:3000> | `admin` | `admin` |
+| Prometheus | <http://localhost:9090> | none | none |
+| Loki (logs, queried through Grafana) | <http://localhost:3100> | none | none |
+| Tempo (traces, queried through Grafana) | <http://localhost:3200> | none | none |
+| API metrics (what Prometheus scrapes) | <http://localhost:9100/metrics> | none | none |
+
+The Grafana user and password are set by `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD` in `docker-compose.yml`. They are a development default: change them before exposing Grafana to anyone else, and note that the ports above are open on every interface of your machine.
+
+Further down the dashboard, the logs of the API and the traces, one click away from each other:
+
+<p align="center">
+  <a href="docs/grafana-logs-traces.jpg"><img src="docs/grafana-logs-traces.jpg" alt="Grafana dashboard Oracle API: connection pool, Redis, Go runtime, API logs and recent traces" width="860"></a>
+</p>
+
+The API runs on the host as before (`go run ./cmd/oracle api`); to send it traces and logs too, set the `OTEL_EXPORTER_OTLP_*` variables of `.env.example` (they are in the file by default).
+
+| Signal | Where it comes from | Where to look |
+|---|---|---|
+| **Metrics** | `/metrics` on `METRICS_PORT` (9100), apart from the API port. Prometheus scrapes it every 5 s | Prometheus <http://localhost:9090>, the dashboard |
+| **Logs** | structured (`log/slog`) on stderr, text or JSON (`LOG_FORMAT`); also sent to Loki when `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is set. Every request is one line: route, status, duration, cache, `trace_id` | Grafana, panel *API logs* or Explore → Loki |
+| **Traces** | OpenTelemetry, sent to Tempo when `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set. One trace per request: the route, the Redis calls, the SQL queries and the heavy operations (`history_load`, `strategy_scan`, `plan_build`), plus the calls to Yahoo and B3 | Grafana, panel *Recent traces* or Explore → Tempo |
+
+A log line and its trace are linked by `trace_id`, in both directions inside Grafana.
+
+The API exports, besides the Go runtime and the connection pool (`go_sql_*`):
+
+| Metric | Labels |
+|---|---|
+| `oracle_http_requests_total` | `method`, `route`, `status` |
+| `oracle_http_request_duration_seconds` (histogram) | `method`, `route` |
+| `oracle_http_requests_in_flight` | |
+| `oracle_cache_requests_total` | `route`, `result` (`hit`, `miss`, `error`) |
+| `oracle_operation_duration_seconds` (histogram) | `operation`, `result` |
+
+`route` is the pattern the router matched (`GET /tickers/{ticker}`, or `unmatched` for 404 and 405), never the URL, so the labels stay few.
+
+Things to know:
+
+- Nothing is required: without Redis, Prometheus or the OTLP endpoints the API runs the same. Exporters that cannot be reached cost a log line, not a failed request.
+- Every request is traced by default. Under load tests set `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and `OTEL_TRACES_SAMPLER_ARG=0.1` to keep a tenth.
+- `sync`, `recommend` and `backtest` send traces and logs too (service `oracle-sync`...), but they live for seconds, so there are no metrics to scrape from them.
+- Data lives in Docker volumes (Prometheus keeps 7 days); `docker compose --profile monitoring down -v` clears it.
 
 ## Docker
 

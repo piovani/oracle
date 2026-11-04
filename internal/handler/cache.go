@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"oracle/internal/cache"
+	"oracle/internal/telemetry"
 
 	"golang.org/x/sync/singleflight"
 )
@@ -48,14 +49,20 @@ func (rc *ResponseCache) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		key := r.URL.Path + "?" + r.URL.Query().Encode() // Encode sorts the parameters: ?a=1&b=2 and ?b=2&a=1 are one key
 
 		stored, hit, err := rc.cache.Get(r.Context(), key)
+		route := r.Pattern // the route the mux matched, not the URL: few distinct values
 		if err != nil {
 			rc.warn("read", err)
+			telemetry.CacheResult(route, telemetry.CacheError)
 		}
 		if hit {
 			if res, ok := decode(stored); ok {
+				telemetry.CacheResult(route, telemetry.CacheHit)
 				res.write(w, "HIT")
 				return
 			}
+		}
+		if err == nil {
+			telemetry.CacheResult(route, telemetry.CacheMiss)
 		}
 
 		// The work outlives this request: if the client leaves, the others waiting for the same

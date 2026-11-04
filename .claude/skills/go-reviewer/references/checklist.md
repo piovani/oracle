@@ -29,6 +29,11 @@ linter cannot see the problem (for example across packages or at runtime).
   must be live; only 200s are cached; the API still answers when Redis fails; `sync` flushes the
   cache when it ends, and a new `cache.Cache` method lands in the interface, `Redis`,
   `mock.Cache` and `test/contract.Cache` together.
+- **Observability.** A new route goes through the mux in `newMux` so `Instrument` labels it by
+  pattern; metric labels are never URLs, ids or error texts (unbounded cardinality); a heavy
+  operation is wrapped in `telemetry.Operation`; a renamed `oracle_*` metric is renamed in
+  `monitoring/grafana/dashboards/oracle-api.json` too; nothing logs secrets, and telemetry never
+  makes a request fail.
 - **Migrations.** The schema lives in numbered SQL files in `internal/quote/migrations`, not in
   GORM tags or AutoMigrate. A schema change adds the next file, written idempotent
   (`IF NOT EXISTS`); a file that already ran is never edited; the `Quote` tags and the SQL agree.

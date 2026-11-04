@@ -3,10 +3,12 @@ package cache
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"oracle/config"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -33,18 +35,21 @@ func (silent) Printf(context.Context, string, ...any) {}
 // NewRedis prepares the client; it does not connect until the first call. The timeouts are short
 // on purpose: a slow or dead Redis must cost a request milliseconds, not seconds.
 func NewRedis(cfg config.RedisConfig) *Redis {
-	return &Redis{
-		client: redis.NewClient(&redis.Options{
-			Addr:         cfg.Addr,
-			Password:     cfg.Password,
-			DB:           cfg.DB,
-			DialTimeout:  300 * time.Millisecond,
-			ReadTimeout:  500 * time.Millisecond,
-			WriteTimeout: 500 * time.Millisecond,
-			MaxRetries:   -1, // fail fast, the caller serves without the cache
-		}),
-		prefix: cfg.Prefix,
+	client := redis.NewClient(&redis.Options{
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
+		DialTimeout:  300 * time.Millisecond,
+		ReadTimeout:  500 * time.Millisecond,
+		WriteTimeout: 500 * time.Millisecond,
+		MaxRetries:   -1, // fail fast, the caller serves without the cache
+	})
+	// A span per command, under the span of the request that issued it. Without the statement:
+	// it would carry the cached answers into the traces.
+	if err := redisotel.InstrumentTracing(client, redisotel.WithDBStatement(false)); err != nil {
+		slog.Warn("redis tracing disabled", "error", err)
 	}
+	return &Redis{client: client, prefix: cfg.Prefix}
 }
 
 func (r *Redis) Get(ctx context.Context, key string) ([]byte, bool, error) {

@@ -7,3 +7,4 @@ docs/*
 *.csv
 *.md
 tests
+monitoring

@@ -46,7 +46,8 @@ machine `curl -X` gets `400 Bad Request` from the server even when the API is fi
 The Swagger spec (`docs/swagger.*`, served at `/swagger/`) documents the same routes and is
 generated from swag annotations on the handlers with `make swag`. When a route changes,
 update its annotations and regenerate too, so the two documents agree; `/swagger/` itself is
-not an API route and is not in the collection (`check` skips it).
+not an API route and is not in the collection (`check` skips it, and `/metrics` too: it is served on
+`METRICS_PORT`, apart from the API).
 
 ## Conventions
 

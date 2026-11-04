@@ -55,5 +55,90 @@ services:
       timeout: 3s
       retries: 30
 
+  # --- Monitoring (docker compose --profile monitoring up -d, or make monitoring) ---------------
+  # Metrics, logs and traces of the oracle, seen in Grafana at http://localhost:3000 (admin/admin).
+  # The oracle sends traces to Tempo and logs to Loki when the OTEL_EXPORTER_OTLP_* variables of
+  # .env.example are set; Prometheus scrapes its metrics on METRICS_PORT.
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: oracle_prometheus
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    # Reaches the API running on the host through host.docker.internal (Docker Desktop and Linux).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: oracle_loki
+    profiles: [monitoring]
+    command: ["-config.file=/etc/loki/loki.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+
+  tempo:
+    image: grafana/tempo:2.8.0
+    container_name: oracle_tempo
+    profiles: [monitoring]
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    ports:
+      - "3200:3200" # query API
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes:
+      - ./monitoring/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: oracle_grafana
+    profiles: [monitoring]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: system
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  # Postgres and Redis seen from Prometheus, next to the API's own metrics.
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: oracle_postgres_exporter
+    profiles: [monitoring]
+    environment:
+      DATA_SOURCE_NAME: postgresql://oracle:oracle@postgres:5432/oracle?sslmode=disable
+    depends_on:
+      - postgres
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.74.0
+    container_name: oracle_redis_exporter
+    profiles: [monitoring]
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      - redis
+
 volumes:
   postgres_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  grafana_data:

@@ -13,6 +13,7 @@ import (
 	"oracle/internal/plan"
 	"oracle/internal/quote"
 	"oracle/internal/swing"
+	"oracle/internal/telemetry"
 	"oracle/internal/yahoo"
 )
 
@@ -135,7 +136,9 @@ func (h *Plan) Recommendations(w http.ResponseWriter, r *http.Request) {
 	estimates := h.estimatesFor(r.Context(), latest, useEstimates)
 	ctx, cancel := context.WithTimeout(r.Context(), estimatesBudget)
 	defer cancel()
+	ctx, done := telemetry.Operation(ctx, "plan_build")
 	rows, summaries := plan.Build(ctx, history, latest, params, estimates, opts)
+	done(nil)
 
 	body := planResponse{
 		Session:          latest.Format(time.DateOnly),

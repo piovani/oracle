@@ -36,4 +36,5 @@ Notes:
 - `/recommendations` runs with `estimates=false` and `/tickers/{ticker}/estimate` is not called, so
   the tests never hit Yahoo Finance (an unofficial API that would rate-limit the load).
 - With this many users, raise the limit of open files first (`ulimit -n 65535` in the shell that runs `make load-test`): the macOS default is low and shows up as `too many open files` errors.
+- To watch a run live, start the monitoring stack first (`make monitoring`) and open the *Oracle API* dashboard in Grafana: request rate, latency percentiles, cache hit ratio, connection pool. With `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and `OTEL_TRACES_SAMPLER_ARG=0.1` the API traces a tenth of the requests, which is enough.
 - Run it against a local server. The numbers depend on the machine and on the size of the database.

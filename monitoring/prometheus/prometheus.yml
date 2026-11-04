@@ -1,0 +1,24 @@
+# Prometheus of the local monitoring stack (docker compose --profile monitoring up -d).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # The API runs on the host (go run ./cmd/oracle api), so Prometheus reaches it through the
+  # host.docker.internal alias that docker-compose.yml gives the container. Metrics are on
+  # METRICS_PORT (9100), not on the API port.
+  - job_name: oracle-api
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

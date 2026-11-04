@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const baseURL = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist"
@@ -65,7 +67,7 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return &Client{HTTP: &http.Client{Timeout: 15 * time.Minute}, BaseURL: baseURL}
+	return &Client{HTTP: &http.Client{Timeout: 15 * time.Minute, Transport: otelhttp.NewTransport(http.DefaultTransport)}, BaseURL: baseURL}
 }
 
 // Fetch downloads the given COTAHIST file and calls fn for every stock quote

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -12,9 +13,11 @@ import (
 	"oracle/internal/handler"
 	"oracle/internal/plan"
 	"oracle/internal/quote"
+	"oracle/internal/telemetry"
 	"oracle/internal/yahoo"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // API starts the HTTP server. Ctrl+C stops it after the requests in flight.
@@ -35,7 +38,7 @@ func API(_ []string) {
 
 	server := &http.Server{
 		Addr:              ":" + app.Config.Port,
-		Handler:           withTimeout(newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo, app.Cache), requestTimeout),
+		Handler:           withTelemetry(newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo, app.Cache)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -45,6 +48,15 @@ func API(_ []string) {
 	go func() { serveErr <- server.ListenAndServe() }()
 	log.Printf("server listening on %s", server.Addr)
 
+	metrics := &http.Server{Addr: ":" + app.Config.MetricsPort, Handler: metricsMux(), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		// Without metrics the API still works, so a busy port is a warning, not a reason to stop.
+		if err := metrics.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("metrics server: %v", err)
+		}
+	}()
+	log.Printf("metrics listening on %s", metrics.Addr)
+
 	select {
 	case err := <-serveErr:
 		app.Fatalf("server error: %v", err)
@@ -53,6 +65,7 @@ func API(_ []string) {
 	log.Println("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+	_ = metrics.Shutdown(shutdownCtx)
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		app.Fatalf("shutdown: %v", err)
 	}
@@ -62,6 +75,20 @@ const (
 	requestTimeout  = 9 * time.Second // under WriteTimeout, which would just drop the connection
 	shutdownTimeout = 15 * time.Second
 )
+
+// withTelemetry puts the layers around the routes: the trace of the request, then the timeout, then the
+// measurements right on top of the mux (see telemetry.Instrument).
+func withTelemetry(mux *http.ServeMux) http.Handler {
+	return otelhttp.NewHandler(withTimeout(telemetry.Instrument(mux), requestTimeout), "oracle-api",
+		otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/health" })) // probes would drown the traces
+}
+
+// metricsMux is what Prometheus scrapes, on its own port: it is not part of the API.
+func metricsMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", telemetry.MetricsHandler())
+	return mux
+}
 
 func withTimeout(next http.Handler, timeout time.Duration) http.Handler {
 	timed := http.TimeoutHandler(next, timeout, `{"error":"the request took too long, try again in a moment"}`)

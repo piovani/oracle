@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"oracle/internal/quote"
+	"oracle/internal/telemetry"
 )
 
 const (
@@ -83,7 +84,9 @@ func (c *Histories) entry(ctx context.Context, since, stored time.Time) *history
 func (c *Histories) load(ctx context.Context, h *history, since time.Time) {
 	ctx, cancel := context.WithTimeout(ctx, historyLoadTimeout)
 	defer cancel()
+	ctx, done := telemetry.Operation(ctx, "history_load")
 	h.quotes, h.err = c.store.History(ctx, since)
+	done(h.err)
 	h.latest = quote.LastSession(h.quotes)
 	close(h.done)
 

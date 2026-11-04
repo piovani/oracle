@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	Port  string
-	Env   string
-	DB    DBConfig
-	Redis RedisConfig
+	Port        string
+	MetricsPort string // where Prometheus scrapes /metrics, apart from the API port so it is not exposed with it
+	Env         string
+	DB          DBConfig
+	Redis       RedisConfig
 }
 
 // RedisConfig is the cache server. Prefix starts every key, so several environments can share one Redis.
@@ -43,8 +44,9 @@ func Load() *Config {
 	_ = godotenv.Load()
 
 	return &Config{
-		Port: getEnv("PORT", "8080"),
-		Env:  getEnv("ENV", "development"),
+		Port:        getEnv("PORT", "8080"),
+		MetricsPort: getEnv("METRICS_PORT", "9100"),
+		Env:         getEnv("ENV", "development"),
 		DB: DBConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),

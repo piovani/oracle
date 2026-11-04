@@ -40,7 +40,7 @@ import urllib.request
 
 COLLECTION = "docs/postman-collection.json"
 ROUTES_FILE = "internal/command/api.go"
-UNDOCUMENTED = ("/swagger/",)
+UNDOCUMENTED = ("/swagger/", "/metrics")  # /metrics is on its own port (METRICS_PORT), not an API route
 # oracle_postman is recreated by scripts/seed with a few sample quotes before the API starts.
 TEST_DB = {
     "DB_HOST": "localhost", "DB_PORT": "5433", "DB_USER": "oracle_test",

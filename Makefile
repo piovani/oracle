@@ -1,4 +1,4 @@
-.PHONY: sync recommend backtest test test-db test-db-down test-integration coverage load-test swag lint lint-fix docker-build
+.PHONY: monitoring monitoring-down sync recommend backtest test test-db test-db-down test-integration coverage load-test swag lint lint-fix docker-build
 
 sync:
 	go run ./cmd/oracle sync $(if $(SINCE),-since $(SINCE))
@@ -43,6 +43,14 @@ PROFILE ?= load
 load-test:
 	@command -v k6 >/dev/null || { echo "k6 not found: https://grafana.com/docs/k6/latest/set-up/install-k6/"; exit 1; }
 	k6 run $(if $(BASE_URL),-e BASE_URL=$(BASE_URL)) $(if $(TICKER),-e TICKER=$(TICKER)) tests/load/$(PROFILE).js
+
+# Prometheus, Grafana, Loki and Tempo (see docker-compose.yml). Grafana: http://localhost:3000 (admin/admin).
+monitoring:
+	docker compose --profile monitoring up -d --wait
+
+monitoring-down:
+	docker compose --profile monitoring stop prometheus grafana loki tempo postgres-exporter redis-exporter
+	docker compose --profile monitoring rm -f prometheus grafana loki tempo postgres-exporter redis-exporter
 
 SWAG_VERSION := v1.16.6
 

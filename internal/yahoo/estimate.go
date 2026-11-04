@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const (
@@ -35,7 +37,7 @@ type Client struct {
 
 func NewClient(ctx context.Context) (*Client, error) {
 	jar, _ := cookiejar.New(nil) // only fails on invalid options
-	c := &Client{HTTP: &http.Client{Timeout: 20 * time.Second, Jar: jar}, BaseURL: baseURL}
+	c := &Client{HTTP: &http.Client{Timeout: 20 * time.Second, Jar: jar, Transport: otelhttp.NewTransport(http.DefaultTransport)}, BaseURL: baseURL}
 	if err := c.connect(ctx, cookieURL); err != nil {
 		return nil, err
 	}

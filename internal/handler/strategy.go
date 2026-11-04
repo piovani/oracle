@@ -11,6 +11,7 @@ import (
 
 	"oracle/internal/quote"
 	"oracle/internal/swing"
+	"oracle/internal/telemetry"
 )
 
 const (
@@ -217,7 +218,10 @@ func (h *Strategy) Signals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	signals := []analysisResponse{}
-	for _, a := range swing.Scan(history, latest, tierParams(tier)) {
+	_, done := telemetry.Operation(r.Context(), "strategy_scan")
+	scanned := swing.Scan(history, latest, tierParams(tier))
+	done(nil)
+	for _, a := range scanned {
 		if a.Signal {
 			bars := history[a.Ticker]
 			signals = append(signals, newAnalysis(a, bars[len(bars)-1], tier))

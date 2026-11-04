@@ -266,6 +266,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     { id: "sync",   x: 370, y: 220, t: "quote.SyncHistory",  s: "one transaction per file",      flows: ["sync"] },
     { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest", "api"] },
     { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · connection · Ctrl+C",      flows: ["sync", "recommend", "backtest", "api"] },
+    { id: "telemetry", x: 650, y: 220, t: "internal/telemetry", s: "metrics · logs · traces", flows: ["sync", "recommend", "backtest", "api"] },
     { id: "cache",  x: 90,  y: 120, t: "internal/cache",     s: "Redis · 1 min · sync clears it", kind: "store", flows: ["sync", "api"] },
     { id: "handler", x: 90, y: 220, t: "internal/handler",   s: "routes · 9 s timeout · cache", flows: ["api"] },
     { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "read-only GET · Swagger UI",  flows: ["api"] },
@@ -284,6 +285,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     { d: "M480 280 L480 328",                 flows: ["sync"] },
     { d: "M480 390 L480 438",                 flows: ["recommend", "backtest"] },
     { d: "M650 360 L592 360", aux: true,      flows: ["sync", "recommend", "backtest"] },
+    { d: "M760 328 L760 282", aux: true,      flows: ["sync", "recommend", "backtest", "api"] },
     { d: "M200 218 L200 182",                 flows: ["api"] },
     { d: "M370 232 L340 232 L340 150 L312 150", flows: ["sync"] },
     { d: "M200 328 L200 282",                 flows: ["api"] },
@@ -328,7 +330,7 @@ section > p { max-width: 68ch; color: var(--muted); }
         "<code>make recommend</code> reads the last 3 years, looks for signals on the latest session and prints the plan with quantity, entry, target and stop.",
         "<code>make backtest</code> runs the same rule session by session over past data, with a single cash balance, and compares it with the equal-weight universe.",
         "<code>oracle api</code> serves the same data, the same rule and the same plan over HTTP as read-only JSON, documented in Swagger and Postman.",
-        "Every command starts with <code>bootstrap.Start()</code>, which loads <code>.env</code>, connects to the database and handles Ctrl+C."
+        "Every command starts with <code>bootstrap.Start()</code>, which loads <code>.env</code>, starts <code>internal/telemetry</code> (structured logs, and traces and logs sent to Tempo and Loki when configured), connects to the database and handles Ctrl+C."
       ]
     },
     sync: {
@@ -372,6 +374,7 @@ section > p { max-width: 68ch; color: var(--muted); }
         "Plan routes (<code>/recommendations</code>, <code>/tickers/{ticker}/estimate</code>) call <code>plan.Build</code>. The server keeps one Yahoo session and its targets per trading session; if Yahoo fails, the plan ranks by history only.",
         "The data routes answer from Redis for 1 minute, per path and query (<code>X-Cache: HIT</code> or <code>MISS</code>); <code>sync</code> empties it. If Redis is down the routes answer without it.",
         "<code>handler.Histories</code> caches the stock history until a new session is stored, so only the first call after a sync waits for the load. The series are shared read-only.",
+        "Prometheus scrapes <code>/metrics</code> on its own port (<code>METRICS_PORT</code>, 9100), not on the API port: requests, latency and in-flight by route pattern, cache hits and misses, heavy operations and the connection pool. Each request is also a trace (route, Redis, queries, heavy operations) and a log line with the same <code>trace_id</code>; Grafana shows all three.",
         "A request that takes more than 9 s answers <code>503</code>. Ctrl+C stops the server after the requests in flight finish."
       ]
     }
