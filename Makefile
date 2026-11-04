@@ -1,4 +1,4 @@
-.PHONY: sync recommend backtest test test-db test-db-down test-integration coverage swag lint lint-fix docker-build
+.PHONY: sync recommend backtest test test-db test-db-down test-integration coverage load-test swag lint lint-fix docker-build
 
 sync:
 	go run ./cmd/oracle sync $(if $(SINCE),-since $(SINCE))
@@ -35,6 +35,13 @@ coverage: test-db
 	go tool covdata textfmt -i=$(COVERDIR) -pkg=$(COVERPKG) -o coverage.out
 	@go tool cover -func=coverage.out | awk -v min=$(COVERAGE_MIN) '/^total:/ { sub("%", "", $$3); \
 		printf "total coverage %s%% (minimum %s%%)\n", $$3, min; exit ($$3 + 0 < min + 0) }'
+
+# k6 load tests against a running API (go run ./cmd/oracle api). Never run by `make test`, `make coverage` or the CI.
+PROFILE ?= load
+
+load-test:
+	@command -v k6 >/dev/null || { echo "k6 not found: https://grafana.com/docs/k6/latest/set-up/install-k6/"; exit 1; }
+	k6 run $(if $(BASE_URL),-e BASE_URL=$(BASE_URL)) $(if $(TICKER),-e TICKER=$(TICKER)) tests/load/$(PROFILE).js
 
 SWAG_VERSION := v1.16.6
 

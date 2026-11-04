@@ -20,7 +20,10 @@ go test ./internal/swing -run TestName -v   # single test
 make test-integration         # starts postgres-test (port 5433) and runs test/integration
 make coverage [COVERAGE_MIN=90]  # unit + integration + binary coverage merged into coverage.out; fails below the minimum; same as CI
 make test-db-down
+make load-test [PROFILE=smoke|load|stress BASE_URL= TICKER=]   # k6 against a running API; apart from the tests above and never in the CI
 ```
+
+The k6 load tests in `tests/load` (not `test/`) are not Go tests: `go test ./...`, `make coverage` and the CI never run them, and `.github/workflows/ci.yml` must keep it that way. They hit a running API read-only, without Yahoo (`estimates=false`); when a route is added or renamed, update `tests/load/common.js`.
 
 Unit tests sit next to the code and don't need a database. Dependencies are contracts (`quote.Store`, `quote.Source`, `plan.Estimator`); unit tests use the in-memory mocks in `test/mock` (`mock.Store` is safe for concurrent use, like Postgres, because the API calls it from many goroutines) (tests that import it must be in the external `_test` package of `quote`, or it is an import cycle). `test/fixture` builds price series that trigger the strategy. Integration tests live in `test/integration` behind the `integration` build tag: they use only the `TEST_DB_*` variables (never `DB_*`), clone a seeded template database per test, and run in parallel. `test/contract` runs the same `quote.Store` suite against the mock and against Postgres; when the contract changes, update the suite, the mock and `quote.Postgres` together. Extra flags not exposed by the Makefile (`-years`, `-no-estimates`, `-warmup`, `-lookback`, `-oversold`, `-min-volume`) are passed with `go run ./cmd/oracle <command> -flag`.
 
