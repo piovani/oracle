@@ -164,6 +164,11 @@ section > p { max-width: 68ch; color: var(--muted); }
 .rule h3 { margin: 0; font-size: 16px; font-weight: 600; }
 .rule p { color: var(--muted); font-size: 15px; }
 
+/* ?shot shows only the diagram, for the PNGs in the README (flow.py png) */
+.shot .page { padding: 0; gap: 0; max-width: none; }
+.shot header, .shot .picker, .shot h2, .shot .steps, .shot section + section { display: none; }
+.shot .diagram { border: 0; border-radius: 0; }
+
 @media (prefers-reduced-motion: reduce) {
   .node, .edge, .bracket, .bracket-label { transition: none; }
 }
@@ -247,6 +252,11 @@ section > p { max-width: 68ch; color: var(--muted); }
     t.textContent = str;
     return t;
   }
+
+  // ?shot&theme=light|dark: only the diagram, in that theme (the README images)
+  if (location.search.indexOf("shot") !== -1) document.body.classList.add("shot");
+  var theme = /theme=(light|dark)/.exec(location.search);
+  if (theme) document.documentElement.setAttribute("data-theme", theme[1]);
 
   // ---- Flow diagram ----
   var W = 220, H = 60;

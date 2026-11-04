@@ -22,6 +22,8 @@ python3 -I .claude/skills/flow-diagram/scripts/flow.py check
 - every name in a `flows` list is a command;
 - the script of the page is valid JavaScript (needs `node`).
 
+The README shows the diagram as two images, `docs/flow-light.png` and `docs/flow-dark.png` (GitHub picks one by theme). `flow.py png` regenerates both from the page, with headless Google Chrome (`CHROME=/path/to/chrome` to use another binary). The page opens in a diagram-only view with `flow.html?shot&theme=light` (or `dark`), which is what `png` captures.
+
 It does not check geometry or whether the texts are true: that is what step 5 is for.
 
 ## Workflow
@@ -41,13 +43,14 @@ It does not check geometry or whether the texts are true: that is what step 5 is
    - A new command also needs a `<button class="picker">` with `data-flow`, an entry in `steps`, and its name in the `lead` paragraph and the `aria-label` of the SVG. If the new nodes do not fit in the 960×840 `viewBox`, enlarge it.
 3. **Keep the texts true.** Numbers in the steps, the trade timeline and the rules must match the code. Subtitles (`s`) fit in one box line, about 30 characters.
 4. **Update the docs that mention the diagram:**
-   - `README.md`: the sentence that introduces `docs/flow.html` (commands it shows), the "Project layout" tree and the paragraph after it;
+   - `README.md`: the images and the sentence that introduces `docs/flow.html` at the top (and the `alt` text of the image, which describes the diagram), the "Project layout" tree and the paragraph after it;
    - `CLAUDE.md`: the Architecture section and the invariants, if the flow changed.
    Docs are in English, like the code.
-5. **Check.** Run `check` again; it must print `check ok`. Then open the page in a browser (the `file://` URL is blocked in Claude in Chrome, so serve it: `python3 -m http.server 8765 --directory docs`, and stop the server afterwards). Click every picker button and read the result: no overlapping boxes, arrows end on box borders, the lit nodes are the ones that command uses, light and dark themes both read well.
+5. **Regenerate the images.** Run `flow.py png` and open both PNGs: the diagram must be complete and not cropped (the window is 980×860 at 2x; if you enlarge the `viewBox`, enlarge `--window-size` in `flow.py` too). Commit them with the page, so the README never shows an old diagram.
+6. **Check.** Run `check` again; it must print `check ok`. Then open the page in a browser (the `file://` URL is blocked in Claude in Chrome, so serve it: `python3 -m http.server 8765 --directory docs`, and stop the server afterwards). Click every picker button and read the result: no overlapping boxes, arrows end on box borders, the lit nodes are the ones that command uses, light and dark themes both read well.
 
 ## Rules
 
 - No external script or image; only the Google Fonts stylesheet already there.
 - Colors come from the `:root` tokens, so dark mode keeps working.
-- Do not commit; leave the changes in the working tree for the author.
+- Do not commit; leave the changes (the PNGs included) in the working tree for the author.
