@@ -8,6 +8,7 @@ import (
 
 	_ "oracle/docs" // swagger spec
 	"oracle/internal/bootstrap"
+	"oracle/internal/cache"
 	"oracle/internal/handler"
 	"oracle/internal/plan"
 	"oracle/internal/quote"
@@ -23,6 +24,7 @@ import (
 //	@description	HTTP API of the oracle, started with `oracle api`.
 //	@description	The server listens on `PORT` (default 8080) and connects to Postgres before it starts listening: if the database is unreachable, the process exits and nothing answers.
 //	@description	There is no authentication. Routes that don't exist answer 404, and known routes called with the wrong method answer 405 with an `Allow` header, both in plain text.
+//	@description	The answers of the data routes (everything but `/health`, `/strategy` and `/strategy/tiers`) are cached in Redis for 1 minute, per path and query, and the sync command empties that cache when it stores new quotes. The `X-Cache` header says `HIT` or `MISS`. If Redis is down the routes answer as usual, without the cache.
 //	@description	Any route answers 503 {"error": ...} when it takes longer than 9 seconds. The ticker list and the history behind the strategy and plan routes are cached until a new session is stored, so the first call after a sync is the slow one (a few seconds) and the next take milliseconds.
 //	@description	Ctrl+C (SIGINT) stops the server after the requests in flight finish.
 //	@BasePath		/
@@ -33,7 +35,7 @@ func API(_ []string) {
 
 	server := &http.Server{
 		Addr:              ":" + app.Config.Port,
-		Handler:           withTimeout(newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo), requestTimeout),
+		Handler:           withTimeout(newMux(quote.NewPostgres(app.DB), time.Now, connectYahoo, app.Cache), requestTimeout),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -78,7 +80,12 @@ func connectYahoo(ctx context.Context) (plan.Estimator, error) {
 	return client, nil
 }
 
-func newMux(store handler.StrategyReader, now func() time.Time, connect handler.Connect) *http.ServeMux {
+// cacheTTL is how long the cache keeps an answer. The sync command empties it sooner, when new quotes arrive.
+const cacheTTL = time.Minute
+
+// newMux registers the routes. Answers of the data routes are kept in c for cacheTTL; a nil c turns the cache off.
+func newMux(store handler.StrategyReader, now func() time.Time, connect handler.Connect, c cache.Cache) *http.ServeMux {
+	cached := handler.NewResponseCache(c, cacheTTL).Wrap
 	histories := handler.NewHistories(store, now)
 	quotes := handler.NewQuotes(store, now)
 	strategy := handler.NewStrategy(store, histories, now)
@@ -89,24 +96,24 @@ func newMux(store handler.StrategyReader, now func() time.Time, connect handler.
 	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
 
 	// Tickers
-	mux.HandleFunc("GET /tickers", quotes.Tickers)
-	mux.HandleFunc("GET /tickers/{ticker}", quotes.Ticker)
-	mux.HandleFunc("GET /tickers/{ticker}/quotes", quotes.TickerQuotes)
+	mux.HandleFunc("GET /tickers", cached(quotes.Tickers))
+	mux.HandleFunc("GET /tickers/{ticker}", cached(quotes.Ticker))
+	mux.HandleFunc("GET /tickers/{ticker}/quotes", cached(quotes.TickerQuotes))
 
 	// Sessions
-	mux.HandleFunc("GET /sessions/latest", quotes.LatestSession)
-	mux.HandleFunc("GET /sessions/{date}/quotes", quotes.SessionQuotes)
+	mux.HandleFunc("GET /sessions/latest", cached(quotes.LatestSession))
+	mux.HandleFunc("GET /sessions/{date}/quotes", cached(quotes.SessionQuotes))
 
 	// Strategy
 	mux.HandleFunc("GET /strategy", strategy.Params)
 	mux.HandleFunc("GET /strategy/tiers", strategy.Tiers)
-	mux.HandleFunc("GET /tickers/{ticker}/analysis", strategy.Analysis)
-	mux.HandleFunc("GET /tickers/{ticker}/trades", strategy.Trades)
-	mux.HandleFunc("GET /signals", strategy.Signals)
+	mux.HandleFunc("GET /tickers/{ticker}/analysis", cached(strategy.Analysis))
+	mux.HandleFunc("GET /tickers/{ticker}/trades", cached(strategy.Trades))
+	mux.HandleFunc("GET /signals", cached(strategy.Signals))
 
 	// Plan
-	mux.HandleFunc("GET /recommendations", plans.Recommendations)
-	mux.HandleFunc("GET /recommendations/tiers", plans.RecommendationTiers)
-	mux.HandleFunc("GET /tickers/{ticker}/estimate", plans.Estimate)
+	mux.HandleFunc("GET /recommendations", cached(plans.Recommendations))
+	mux.HandleFunc("GET /recommendations/tiers", cached(plans.RecommendationTiers))
+	mux.HandleFunc("GET /tickers/{ticker}/estimate", cached(plans.Estimate))
 	return mux
 }

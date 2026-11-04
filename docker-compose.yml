@@ -11,9 +11,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Database for the integration tests, apart from the one above so tests never touch synced data.
-  # It is not started by `docker compose up`; `make test-integration` starts it.
-  # Data lives in memory and durability is off: it is thrown away anyway, and tests run faster.
+  redis:
+    image: redis:7-alpine
+    container_name: oracle_redis
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
   postgres-test:
     image: postgres:16-alpine
     container_name: oracle_postgres_test
@@ -29,6 +38,19 @@ services:
       - /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oracle_test -d oracle_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: oracle_redis_test
+    profiles: [test]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 1s
       timeout: 3s
       retries: 30

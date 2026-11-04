@@ -266,6 +266,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     { id: "sync",   x: 370, y: 220, t: "quote.SyncHistory",  s: "one transaction per file",      flows: ["sync"] },
     { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest", "api"] },
     { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · connection · Ctrl+C",      flows: ["sync", "recommend", "backtest", "api"] },
+    { id: "cache",  x: 90,  y: 120, t: "internal/cache",     s: "Redis · 1 min · sync clears it", kind: "store", flows: ["sync", "api"] },
     { id: "handler", x: 90, y: 220, t: "internal/handler",   s: "routes · 9 s timeout · cache", flows: ["api"] },
     { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "read-only GET · Swagger UI",  flows: ["api"] },
     { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "ON, PN and unit stocks only",        flows: ["recommend", "backtest", "api"] },
@@ -283,6 +284,8 @@ section > p { max-width: 68ch; color: var(--muted); }
     { d: "M480 280 L480 328",                 flows: ["sync"] },
     { d: "M480 390 L480 438",                 flows: ["recommend", "backtest"] },
     { d: "M650 360 L592 360", aux: true,      flows: ["sync", "recommend", "backtest"] },
+    { d: "M200 218 L200 182",                 flows: ["api"] },
+    { d: "M370 232 L340 232 L340 150 L312 150", flows: ["sync"] },
     { d: "M200 328 L200 282",                 flows: ["api"] },
     { d: "M310 250 L345 250 L345 350 L368 350", flows: ["api"] },
     { d: "M90 250 L50 250 L50 710 L368 710",  flows: ["api"] },
@@ -321,7 +324,7 @@ section > p { max-width: 68ch; color: var(--muted); }
     all: {
       title: "Overview",
       items: [
-        "<code>make sync</code> downloads B3's COTAHIST files and stores the quotes in Postgres. Run it every day after the close.",
+        "<code>make sync</code> downloads B3's COTAHIST files, stores the quotes in Postgres and empties the cache. Run it every day after the close.",
         "<code>make recommend</code> reads the last 3 years, looks for signals on the latest session and prints the plan with quantity, entry, target and stop.",
         "<code>make backtest</code> runs the same rule session by session over past data, with a single cash balance, and compares it with the equal-weight universe.",
         "<code>oracle api</code> serves the same data, the same rule and the same plan over HTTP as read-only JSON, documented in Swagger and Postman.",
@@ -335,7 +338,8 @@ section > p { max-width: 68ch; color: var(--muted); }
         "Skips files already in <code>synced_files</code>, so running it again is fast and safe.",
         "<code>b3.Client.Fetch</code> downloads the ZIP and parses each 245-column line, keeping only round-lot cash-market records.",
         "Inserts in batches of 1,000 with <code>ON CONFLICT DO NOTHING</code> and records the file, all in the same transaction.",
-        "A file B3 hasn't published (holiday, weekend, session not closed yet) is skipped without an error."
+        "A file B3 hasn't published (holiday, weekend, session not closed yet) is skipped without an error.",
+        "At the end, even if it failed midway, it empties the Redis cache (<code>internal/cache</code>), so the API stops answering with old data. A Redis that is down is only a warning."
       ]
     },
     recommend: {
@@ -366,6 +370,7 @@ section > p { max-width: 68ch; color: var(--muted); }
         "Quote routes (<code>/tickers</code>, <code>/sessions</code>) read through <code>quote.Store</code> and cover every spec, funds and ETFs included.",
         "Strategy routes (<code>/strategy</code>, <code>/signals</code>, <code>/tickers/{ticker}/analysis</code> and <code>/trades</code>) call the same <code>internal/swing</code> functions as <code>recommend</code>, so the numbers match the CLI.",
         "Plan routes (<code>/recommendations</code>, <code>/tickers/{ticker}/estimate</code>) call <code>plan.Build</code>. The server keeps one Yahoo session and its targets per trading session; if Yahoo fails, the plan ranks by history only.",
+        "The data routes answer from Redis for 1 minute, per path and query (<code>X-Cache: HIT</code> or <code>MISS</code>); <code>sync</code> empties it. If Redis is down the routes answer without it.",
         "<code>handler.Histories</code> caches the stock history until a new session is stored, so only the first call after a sync waits for the load. The series are shared read-only.",
         "A request that takes more than 9 s answers <code>503</code>. Ctrl+C stops the server after the requests in flight finish."
       ]

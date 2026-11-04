@@ -12,12 +12,13 @@ backtest:
 test:
 	go test ./...
 
-# Postgres for the integration tests (postgres-test in docker-compose.yml), apart from the one with your data.
+# Postgres and Redis for the integration tests (postgres-test and redis-test in docker-compose.yml),
+# apart from the ones with your data.
 test-db:
-	docker compose up -d --wait postgres-test
+	docker compose up -d --wait postgres-test redis-test
 
 test-db-down:
-	docker compose rm -sf postgres-test
+	docker compose rm -sf postgres-test redis-test
 
 # Starts the test database if needed; the same target runs in CI.
 test-integration: test-db

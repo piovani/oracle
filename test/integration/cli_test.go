@@ -422,13 +422,13 @@ func TestCLIAPIPlan(t *testing.T) {
 	}
 }
 
-func startAPI(t *testing.T, cfg config.DBConfig) string {
+func startAPI(t *testing.T, cfg config.DBConfig, extraEnv ...string) string {
 	t.Helper()
 	port := freePort(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cmd := exec.CommandContext(ctx, binary, "api")
-	cmd.Env = append(env(cfg), "PORT="+strconv.Itoa(port))
+	cmd.Env = append(append(env(cfg), "PORT="+strconv.Itoa(port)), extraEnv...)
 	cmd.Dir = t.TempDir()
 	// Ctrl+C, so it exits cleanly and writes its coverage.
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }

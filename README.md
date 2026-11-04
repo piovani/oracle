@@ -49,6 +49,10 @@ Everything comes from `.env` (or environment variables). The defaults match `doc
 | `DB_HOST`, `DB_PORT` | `localhost`, `5432` |
 | `DB_USER`, `DB_PASSWORD`, `DB_NAME` | `oracle` |
 | `DB_SSLMODE` | `disable` |
+| `REDIS_ADDR` | `localhost:6379` |
+| `REDIS_PASSWORD` | — |
+| `REDIS_DB` | `0` |
+| `REDIS_PREFIX` | `oracle:cache:` (starts every key, so environments can share one Redis) |
 | `PORT` | `8080` (used only by the API) |
 | `ENV` | `development` |
 
@@ -128,6 +132,7 @@ internal/
   command/     one function per command: Sync, Recommend, Backtest, API
   bootstrap/   startup shared by every command
   b3/          COTAHIST file reader
+  cache/       Redis cache of the API answers, emptied by sync
   quote/       quote model, sync and history loading
   swing/       the strategy: signal, order prices, simulation, ranking, scan and track record
   plan/        the trading plan (tiers, analyst estimates, sizing), shared by recommend and the API
@@ -195,11 +200,21 @@ The strategy routes call the same `internal/swing` functions as `recommend` (`An
 
 Every route answers `503 {"error": ...}` instead of hanging when it takes longer than 9 seconds. Ctrl+C (or the SIGINT of `docker stop`) stops the server after the requests in flight finish.
 
-Loading three years of every stock takes about two seconds on the full B3 history, so the server keeps it, and the ticker list, until a new session is stored: the first strategy or plan call after a sync waits for that load (requests arriving meanwhile share it), the next ones answer in milliseconds. On the full history (3.2 million quotes since 1986) the first call of `/tickers` takes about 2.5 s and later ones about 15 ms; `/signals` and `/recommendations` go from about 3 s to under 100 ms.
+Besides that cache, loading three years of every stock takes about two seconds on the full B3 history, so the server keeps it, and the ticker list, until a new session is stored: the first strategy or plan call after a sync waits for that load (requests arriving meanwhile share it), the next ones answer in milliseconds. On the full history (3.2 million quotes since 1986) the first call of `/tickers` takes about 2.5 s and later ones about 15 ms; `/signals` and `/recommendations` go from about 3 s to under 100 ms.
 
 The plan routes call `plan.Build`, the function `recommend` prints, with the same defaults (`capital=500`, `top=5`, `risk=2`). Analyst targets come from Yahoo Finance: the server opens one Yahoo session per trading session and caches the targets, so only the first call of a session waits for them (at most 5 s; slower targets are left for a later call). Calls at the same time wait for the same answer from Yahoo, so they get the same plan. When Yahoo fails, the plan ranks by history only and says so in `analyst_estimates`.
 
 Prices are as traded, not adjusted for splits or dividends, like everywhere else in the project.
+
+### Cache
+
+The answers of the data routes (everything but `/health`, `/strategy` and `/strategy/tiers`) are kept in **Redis**, the `redis` service of `docker-compose.yml` (`docker compose up -d` starts it, with a 256 MB cap that evicts the least recently used keys and no persistence). Redis is shared: every instance of the API reads the same cache, and so does the `sync` command.
+
+- **Recycled every minute.** An answer is kept for 1 minute, per path and query (`/signals?tier=forte` and `/signals?tier=medio` are two entries, and the order of the parameters does not matter). The `X-Cache` header says `HIT` or `MISS`.
+- **Only 200s are kept**, never errors or timeouts, and bodies above 4 MB are not stored.
+- **`make sync` empties it.** When the sync ends (even if it failed after storing some files) it drops every key under `REDIS_PREFIX`, and the API builds new answers from the new quotes. Keys of other applications in the same Redis are left alone. A request that was already being computed when the sync ended can still store an old answer, which expires within the minute.
+- **Identical misses share the work:** when many clients ask for the same expired entry at once, one computes it and the others wait for it.
+- **Redis down is not an outage.** The routes answer without the cache, and the log warns at most every 30 seconds; the sync only warns too. Calls to a Redis that does not answer give up after half a second.
 
 ### Swagger
 
@@ -232,7 +247,7 @@ docker run --rm --env-file .env oracle recommend -capital 2000
 docker run --rm --env-file .env -p 8080:8080 oracle    # api, the default
 ```
 
-The image is built for `linux/arm64` and holds only the `oracle` binary. Inside a container `localhost` is the container itself, so point `DB_HOST` at the database host (for example `postgres` when running next to the compose service).
+The image is built for `linux/arm64` and holds only the `oracle` binary. Inside a container `localhost` is the container itself, so point `DB_HOST` and `REDIS_ADDR` at the hosts of the database and of Redis (for example `postgres` and `redis:6379` when running next to the compose services).
 
 ## Tests
 
@@ -245,14 +260,14 @@ The unit tests sit next to the code they test and don't need a database. What a 
 The integration tests are in `test/integration`, behind the `integration` build tag, so `go test ./...` skips them:
 
 ```
-make test-integration    # starts the test database, then runs the tests
+make test-integration    # starts the test Postgres and Redis, then runs the tests
 make coverage            # unit + integration tests with merged coverage; fails below COVERAGE_MIN (90)
-make test-db-down        # stops it
+make test-db-down        # stops them
 ```
 
 `make coverage` counts the unit tests, the integration tests and the `oracle` binary the CLI tests run (built with `-cover`), and writes the merged profile to `coverage.out` (`go tool cover -html=coverage.out` to browse it).
 
-They use their own Postgres, the `postgres-test` service of `docker-compose.yml` on port 5433, kept in memory and never started by `docker compose up`. They read only the `TEST_DB_*` variables, so they can't reach the database with your data. Before the tests the schema is seeded into a template database; each test clones it (or starts empty, to test the migration), inserts the data it needs and drops its database at the end, so tests run in parallel.
+They also use their own Redis, the `redis-test` service on port 6380 (`TEST_REDIS_ADDR`), and every test gets a key prefix of its own. They use their own Postgres, the `postgres-test` service of `docker-compose.yml` on port 5433, kept in memory and never started by `docker compose up`. They read only the `TEST_DB_*` variables, so they can't reach the database with your data. Before the tests the schema is seeded into a template database; each test clones it (or starts empty, to test the migration), inserts the data it needs and drops its database at the end, so tests run in parallel.
 
 They cover the Postgres store, the sync over HTTP into Postgres (filtering, incremental loads, rollback of a corrupt file), the whole sync → history → strategy pipeline, and the compiled `oracle` binary for every command and its error exits. B3 and Yahoo are still faked, so the tests don't depend on the network.
 

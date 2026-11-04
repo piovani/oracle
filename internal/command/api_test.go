@@ -36,7 +36,7 @@ func now() time.Time { return fixture.Day(2026, 11, 4) }
 func serve(t *testing.T, store *mock.Store, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	newMux(store, now, nil).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
+	newMux(store, now, nil, nil).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
 	return rec
 }
 
@@ -114,7 +114,7 @@ func (failQuotes) TickerQuotes(_ context.Context, _ string, _, _ time.Time) ([]q
 }
 
 func TestTickerRoutesFailOnQuotes(t *testing.T) {
-	mux := newMux(failQuotes{stored()}, now, nil)
+	mux := newMux(failQuotes{stored()}, now, nil, nil)
 	for _, path := range []string{"/tickers/PETR4", "/tickers/PETR4/quotes"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
@@ -137,7 +137,7 @@ func TestHealthAndSwaggerRoutes(t *testing.T) {
 
 func TestTickersAreCachedUntilANewSession(t *testing.T) {
 	store := stored()
-	mux := newMux(store, now, nil)
+	mux := newMux(store, now, nil, nil)
 	first := get(t, mux, "/tickers").Body.String()
 	for range 3 {
 		get(t, mux, "/tickers")
@@ -181,5 +181,55 @@ func TestRequestTimeout(t *testing.T) {
 	withTimeout(page, time.Second).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/swagger/index.html", http.NoBody))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Errorf("page: got %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestAPICachesTheDataRoutes(t *testing.T) {
+	cached := []string{
+		"/tickers", "/tickers/PETR4", "/tickers/PETR4/quotes", "/sessions/latest", "/sessions/2026-10-29/quotes",
+		"/signals", "/tickers/PETR4/analysis", "/tickers/PETR4/trades", "/recommendations", "/recommendations/tiers",
+	}
+	for _, path := range cached {
+		t.Run(path, func(t *testing.T) {
+			store, c := stored(), &mock.Cache{}
+			mux := newMux(store, now, nil, c)
+			get := func() *httptest.ResponseRecorder {
+				rec := httptest.NewRecorder()
+				mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
+				return rec
+			}
+
+			first := get()
+			if first.Code != http.StatusOK {
+				t.Fatalf("%s answered %d %s, want 200 (only 200s are cached)", path, first.Code, first.Body)
+			}
+			store.ReadErr = errors.New("database down") // a hit must not touch the database
+			second := get()
+
+			if first.Header().Get("X-Cache") != "MISS" || second.Header().Get("X-Cache") != "HIT" || second.Body.String() != first.Body.String() {
+				t.Errorf("X-Cache %q then %q, body equal %v; want MISS then HIT with the same body",
+					first.Header().Get("X-Cache"), second.Header().Get("X-Cache"), second.Body.String() == first.Body.String())
+			}
+		})
+	}
+}
+
+func TestAPIDoesNotCacheStaticRoutes(t *testing.T) {
+	for _, path := range []string{"/health", "/strategy", "/strategy/tiers"} {
+		c := &mock.Cache{}
+		rec := httptest.NewRecorder()
+		newMux(stored(), now, nil, c).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
+		if rec.Code != http.StatusOK || rec.Header().Get("X-Cache") != "" || c.GetCalls() != 0 {
+			t.Errorf("%s: %d, X-Cache %q, %d cache reads; want a plain answer", path, rec.Code, rec.Header().Get("X-Cache"), c.GetCalls())
+		}
+	}
+}
+
+func TestAPIRespondsWhenTheCacheFails(t *testing.T) {
+	c := &mock.Cache{GetErr: errors.New("redis down"), SetErr: errors.New("redis down")}
+	rec := httptest.NewRecorder()
+	newMux(stored(), now, nil, c).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/tickers", http.NoBody))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "PETR4") {
+		t.Errorf("got %d %s, want the answer without the cache", rec.Code, rec.Body)
 	}
 }

@@ -29,6 +29,7 @@ more than 99% of checks passing, p95 under 300 ms for light routes and under 1.5
 
 Notes:
 
+- The API answers the data routes from Redis for 1 minute, so most of the load measures the cache, not Postgres: the first request of each path in a minute is a `MISS`, the rest a `HIT` (`X-Cache`). To measure the database, stop Redis (`docker compose stop redis`): the API then answers without a cache.
 - Before measuring, the script warms the server: the first strategy call after a start loads three
   years of quotes and can hit the 9 s timeout.
 - Every route is a read-only `GET`, so the tests don't change the database.

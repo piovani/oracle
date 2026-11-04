@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"oracle/config"
+	"oracle/internal/cache"
 	"oracle/internal/quote"
 	"oracle/pkg/db"
 
@@ -36,6 +37,8 @@ var (
 	// server is the test Postgres; admin is connected to its default database, only to create and drop the others.
 	server config.DBConfig
 	admin  *gorm.DB
+	// redisAddr is the test Redis; every test uses its own key prefix, so they cannot empty each other's cache.
+	redisAddr string
 	// template is the database with the seeded schema that test databases are cloned from.
 	template string
 	// binary is the oracle command, built once for the CLI tests.
@@ -61,6 +64,19 @@ func testServer() config.DBConfig {
 	}
 }
 
+// testRedisAddr reads TEST_REDIS_ADDR, never REDIS_ADDR. The default matches the redis-test service.
+func testRedisAddr() string {
+	if v := os.Getenv("TEST_REDIS_ADDR"); v != "" {
+		return v
+	}
+	return "localhost:6380"
+}
+
+// redisFor is the cache configuration of one test, with a key prefix of its own.
+func redisFor(name string) config.RedisConfig {
+	return config.RedisConfig{Addr: redisAddr, Prefix: "it:" + name + ":"}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
 }
@@ -72,6 +88,12 @@ func run(m *testing.M) int {
 	var err error
 	if admin, err = connect(server); err != nil {
 		fmt.Fprintf(os.Stderr, "integration: cannot reach the test Postgres at %s:%s (%v)\nstart it with `make test-db`\n", server.Host, server.Port, err)
+		return 1
+	}
+
+	redisAddr = testRedisAddr()
+	if err := cache.NewRedis(redisFor("ping")).Flush(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "integration: cannot reach the test Redis at %s (%v)\nstart it with `make test-db`\n", redisAddr, err)
 		return 1
 	}
 
@@ -189,9 +211,11 @@ func insert(t *testing.T, conn *gorm.DB, series ...[]quote.Quote) {
 
 // env points a command at the test database.
 func env(cfg config.DBConfig) []string {
+	redis := redisFor(cfg.Name) // the database name is unique per test, and so is the cache prefix
 	vars := append(os.Environ(),
 		"DB_HOST="+cfg.Host, "DB_PORT="+cfg.Port, "DB_USER="+cfg.User,
 		"DB_PASSWORD="+cfg.Password, "DB_NAME="+cfg.Name, "DB_SSLMODE="+cfg.SSLMode,
+		"REDIS_ADDR="+redis.Addr, "REDIS_PREFIX="+redis.Prefix,
 	)
 	// go test overrides GOCOVERDIR for itself, hence COVERDIR.
 	if dir := os.Getenv("COVERDIR"); dir != "" {

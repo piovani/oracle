@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```
-docker compose up -d          # Postgres 16 on localhost:5432 (user/pass/db: oracle)
+docker compose up -d          # Postgres 16 on localhost:5432 (user/pass/db: oracle) and Redis 7 on localhost:6379
 make sync [SINCE=2020]        # download B3 COTAHIST files into Postgres (incremental)
 make recommend [CAPITAL= TOP= RISK= FILL=1]
 make backtest  [FROM=YYYY-MM-DD CAPITAL= TOP= RISK= COST= RANK=expectancy|rsi CSV=file]
@@ -17,7 +17,7 @@ make lint                     # golangci-lint v2, config in .golangci.yml; must 
 make lint-fix
 go test ./...
 go test ./internal/swing -run TestName -v   # single test
-make test-integration         # starts postgres-test (port 5433) and runs test/integration
+make test-integration         # starts postgres-test (port 5433) and redis-test (port 6380) and runs test/integration
 make coverage [COVERAGE_MIN=90]  # unit + integration + binary coverage merged into coverage.out; fails below the minimum; same as CI
 make test-db-down
 make load-test [PROFILE=smoke|load|stress BASE_URL= TICKER=]   # k6 against a running API; apart from the tests above and never in the CI
@@ -52,7 +52,9 @@ Invariants to preserve when changing strategy or backtest code:
 - **Splits.** Prices are not adjusted. A day-over-day close ratio outside 0.6–1/0.6 is treated as a split: `swing.Segments` breaks the series (backtest) and `continuous` keeps only the part after the last split (recommend).
 - **Shared logic.** `recommend`, `backtest` and the API must keep calling the same `swing` functions, so backtest results stay representative of the live plan.
 
-The HTTP API (`oracle api`, routes in `internal/command/api.go`, registered in `newMux`; handlers in `internal/handler` read through `handler.QuoteReader`/`StrategyReader`, subsets of `quote.Store`; `handler.Histories` caches the stock history per years value until `LatestSession` changes and is shared read-only, so `swing` and `plan` must never write into the series they get; `withTimeout` answers 503 after 9 s; Ctrl+C shuts the server down) is documented twice. Swagger: swag annotations (general info on `API`, one block per handler in `internal/handler`) generate `docs/docs.go`, `docs/swagger.json` and `docs/swagger.yaml` with `make swag` (never edit them by hand; CI fails if they are stale), served at `/swagger/index.html`. Postman: the collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
+The **cache** (`internal/cache`: the `Cache` contract, `Redis` its implementation, `mock.Cache` for unit tests, `test/contract.Cache` the shared suite) keeps the 200 answers of the data routes for 1 minute (`cacheTTL` in `internal/command/api.go`): `handler.ResponseCache` wraps each route in `newMux` (a nil cache turns it off), keys them by path and sorted query, shares identical misses through singleflight and serves without the cache when Redis fails. `oracle sync` calls `flushCache` when it ends, dropping every key under `REDIS_PREFIX`; integration tests give each test its own prefix, so they never empty each other\'s cache. A route added to `newMux` must decide whether it goes through `cached(...)`: yes for anything that reads the database or computes the strategy.
+
+The HTTP API (`oracle api`, routes in `internal/command/api.go`, registered in `newMux`; handlers in `internal/handler` read through `handler.QuoteReader`/`StrategyReader`, subsets of `quote.Store`; `handler.Histories` keeps the stock history in memory per years value until `LatestSession` changes and is shared read-only, so `swing` and `plan` must never write into the series they get; `withTimeout` answers 503 after 9 s; Ctrl+C shuts the server down) is documented twice. Swagger: swag annotations (general info on `API`, one block per handler in `internal/handler`) generate `docs/docs.go`, `docs/swagger.json` and `docs/swagger.yaml` with `make swag` (never edit them by hand; CI fails if they are stale), served at `/swagger/index.html`. Postman: the collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
 
 Project skills in `.claude/skills`: `flow-diagram` keeps `docs/flow.html` (the flow diagram) and the docs that describe it up to date (`scripts/flow.py check` compares the page with the code), `postman-collection` keeps the Postman collection, `go-reviewer` reviews Go code. Run `flow-diagram` when a command, package, route or invariant changes.
 

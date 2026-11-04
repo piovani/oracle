@@ -81,7 +81,7 @@ func lastClose(t *testing.T, store *mock.Store, ticker string) float64 {
 
 func TestRecommendationsIsWhatRecommendBuilds(t *testing.T) {
 	store := strategyStore()
-	rec := get(t, newMux(store, now, nil), "/recommendations?capital=1000&top=3&fill=true")
+	rec := get(t, newMux(store, now, nil, nil), "/recommendations?capital=1000&top=3&fill=true")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
@@ -115,7 +115,7 @@ func TestRecommendationsIsWhatRecommendBuilds(t *testing.T) {
 func fraction2(v float64) float64 { return float64(int64(v*100+0.5)) / 100 }
 
 func TestRecommendationsStopsAtTheFirstTier(t *testing.T) {
-	got := decode[planBody](t, get(t, newMux(strategyStore(), now, nil), "/recommendations"))
+	got := decode[planBody](t, get(t, newMux(strategyStore(), now, nil, nil), "/recommendations"))
 	if len(got.Picks) != 1 || got.Picks[0].Ticker != "WIN3" || len(got.Tiers) != 1 || got.Tiers[0].Label != "forte" ||
 		got.Capital != 500 || got.Top != 5 || got.PerStock != 100 || got.MaxLoss != 10 {
 		t.Errorf("got %+v, want only WIN3 with the defaults of oracle recommend", got)
@@ -129,7 +129,7 @@ func TestRecommendationsUseAnalystTargets(t *testing.T) {
 		"MED3": {Target: lastClose(t, store, "MED3") * 0.9}, // analysts see it falling
 	}}
 	yahooSession := &fakeYahoo{est: est}
-	mux := newMux(store, now, yahooSession.connect)
+	mux := newMux(store, now, yahooSession.connect, nil)
 
 	got := decode[planBody](t, get(t, mux, "/recommendations?fill=true"))
 	if !got.AnalystEstimates || len(got.Picks) != 1 || got.Picks[0].Ticker != "WIN3" {
@@ -154,7 +154,7 @@ func TestYahooSessionFollowsTheLatestSession(t *testing.T) {
 	store := strategyStore()
 	clock := now()
 	yahooSession := &fakeYahoo{err: errors.New("yahoo is down")}
-	mux := newMux(store, func() time.Time { return clock }, yahooSession.connect)
+	mux := newMux(store, func() time.Time { return clock }, yahooSession.connect, nil)
 
 	if got := decode[planBody](t, get(t, mux, "/recommendations")); got.AnalystEstimates || len(got.Picks) != 1 {
 		t.Fatalf("got %+v, want the plan by history only", got)
@@ -178,7 +178,7 @@ func TestYahooSessionFollowsTheLatestSession(t *testing.T) {
 }
 
 func TestRecommendationTiers(t *testing.T) {
-	rec := get(t, newMux(strategyStore(), now, nil), "/recommendations/tiers")
+	rec := get(t, newMux(strategyStore(), now, nil, nil), "/recommendations/tiers")
 	got := decode[struct {
 		Session string `json:"session"`
 		Tiers   []struct {
@@ -213,7 +213,7 @@ func TestEstimate(t *testing.T) {
 		Err:       map[string]error{"MED3": errors.New("yahoo is down")},
 	}
 	yahooSession := &fakeYahoo{est: est}
-	mux := newMux(store, now, yahooSession.connect)
+	mux := newMux(store, now, yahooSession.connect, nil)
 
 	rec := get(t, mux, "/tickers/win3/estimate")
 	got := decode[struct {
@@ -238,8 +238,8 @@ func TestEstimate(t *testing.T) {
 		{mux, "/tickers/FLAT3/estimate", 404, `{"error":"no analyst coverage for FLAT3"}`},
 		{mux, "/tickers/MED3/estimate", 503, `{"error":"analyst estimates are unavailable, try again later"}`},
 		{mux, "/tickers/ZZZZ3/estimate", 404, `{"error":"ticker ZZZZ3 not found"}`},
-		{newMux(store, now, nil), "/tickers/WIN3/estimate", 503, `{"error":"analyst estimates are unavailable, try again later"}`},
-		{newMux(failQuotes{store}, now, yahooSession.connect), "/tickers/WIN3/estimate", 500, `{"error":"internal error"}`},
+		{newMux(store, now, nil, nil), "/tickers/WIN3/estimate", 503, `{"error":"analyst estimates are unavailable, try again later"}`},
+		{newMux(failQuotes{store}, now, yahooSession.connect, nil), "/tickers/WIN3/estimate", 500, `{"error":"internal error"}`},
 	}
 	for _, c := range cases {
 		rec := get(t, c.mux, c.path)
@@ -290,7 +290,7 @@ func TestPlanErrors(t *testing.T) {
 		}
 	}
 	yahooSession := &fakeYahoo{est: &mock.Estimator{}}
-	if rec := get(t, newMux(failLatest{strategyStore()}, now, yahooSession.connect), "/tickers/WIN3/estimate"); rec.Code != http.StatusInternalServerError {
+	if rec := get(t, newMux(failLatest{strategyStore()}, now, yahooSession.connect, nil), "/tickers/WIN3/estimate"); rec.Code != http.StatusInternalServerError {
 		t.Errorf("estimate with a failing latest session: got %d", rec.Code)
 	}
 }
@@ -299,7 +299,7 @@ func TestPlanErrors(t *testing.T) {
 func TestYahooSessionOnlyMovesForward(t *testing.T) {
 	store := strategyStore()
 	yahooSession := &fakeYahoo{est: &mock.Estimator{}}
-	mux := newMux(store, now, yahooSession.connect)
+	mux := newMux(store, now, yahooSession.connect, nil)
 
 	get(t, mux, "/recommendations")
 	store.Quotes = append(store.Quotes, quote.Quote{Ticker: "XPML11", Spec: "CI", Date: strategyDay.AddDate(0, 0, 1), Close: 100})
@@ -319,7 +319,7 @@ func (emptyQuotes) TickerQuotes(context.Context, string, time.Time, time.Time) (
 
 func TestEstimateWithoutTheLastQuote(t *testing.T) {
 	yahooSession := &fakeYahoo{est: &mock.Estimator{}}
-	rec := get(t, newMux(emptyQuotes{strategyStore()}, now, yahooSession.connect), "/tickers/WIN3/estimate")
+	rec := get(t, newMux(emptyQuotes{strategyStore()}, now, yahooSession.connect, nil), "/tickers/WIN3/estimate")
 	if rec.Code != http.StatusInternalServerError || yahooSession.calls != 0 {
 		t.Errorf("got %d %s after %d connections, want 500 before asking Yahoo", rec.Code, rec.Body.String(), yahooSession.calls)
 	}
