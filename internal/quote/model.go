@@ -2,9 +2,11 @@ package quote
 
 import "time"
 
+// Quote is one trading day of one ticker. The schema is not derived from these tags: it lives in
+// the SQL files of migrations/, and the tags only tell GORM how to read and write the columns.
 type Quote struct {
 	Ticker   string    `gorm:"primaryKey;size:12"`
-	Date     time.Time `gorm:"primaryKey;type:date;index"`
+	Date     time.Time `gorm:"primaryKey;type:date"`
 	Name     string    `gorm:"size:12"`
 	Spec     string    `gorm:"size:10"`
 	ISIN     string    `gorm:"column:isin;size:12"`

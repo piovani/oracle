@@ -25,6 +25,9 @@ linter cannot see the problem (for example across packages or at runtime).
   `quote.Postgres` together. Tests importing `test/mock` live in the external `_test` package.
 - **Data.** `SaveFile` is one transaction per file with `ON CONFLICT DO NOTHING`; sync stays
   incremental and idempotent through `SyncedFile`. `b3.ErrNotFound` is skipped, not an error.
+- **Migrations.** The schema lives in numbered SQL files in `internal/quote/migrations`, not in
+  GORM tags or AutoMigrate. A schema change adds the next file, written idempotent
+  (`IF NOT EXISTS`); a file that already ran is never edited; the `Quote` tags and the SQL agree.
 - **Integration tests** use only `TEST_DB_*` (never `DB_*`), clone the template database per
   test, run in parallel and sit behind the `integration` build tag.
 - **Language.** User-facing output (reports, column names, tiers `forte`/`médio`/`fraco`/

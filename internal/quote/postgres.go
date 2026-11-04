@@ -21,10 +21,6 @@ func NewPostgres(db *gorm.DB) *Postgres {
 	return &Postgres{db: db}
 }
 
-func (p *Postgres) Migrate(ctx context.Context) error {
-	return p.db.WithContext(ctx).AutoMigrate(&Quote{}, &SyncedFile{})
-}
-
 func (p *Postgres) SyncedFiles(ctx context.Context) ([]string, error) {
 	var names []string
 	err := p.db.WithContext(ctx).Model(&SyncedFile{}).Pluck("name", &names).Error

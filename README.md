@@ -34,6 +34,12 @@ make sync
 
 The sync is incremental: every downloaded file is recorded in the database and never downloaded again. Run it every day after the close to bring in the latest session.
 
+### Database schema
+
+The schema comes from numbered SQL files in [`internal/quote/migrations`](internal/quote/migrations), embedded in the binary. `make sync` applies the ones the database does not have yet (recorded in the `schema_migrations` table), so an empty database is built from scratch by the first sync, and a database that already has the tables is adopted as it is.
+
+To change the schema, or add an index, create the next file, for example `0003_index_quotes_spec.sql`, written to be idempotent (`CREATE INDEX IF NOT EXISTS ...`). Never edit a file that already ran: add a new one. Everything runs in one transaction, so `CREATE INDEX CONCURRENTLY` does not fit there.
+
 ### Configuration
 
 Everything comes from `.env` (or environment variables). The defaults match `docker-compose.yml`, so nothing needs to change to run locally.
