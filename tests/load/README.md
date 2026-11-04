@@ -15,6 +15,7 @@ make load-test PROFILE=stress BASE_URL=http://localhost:8080 TICKER=VALE3
 |---|---|
 | `smoke` | one user calls every route once; every check must pass |
 | `load` | ramps to 1000 users in 2 minutes, holds 2 minutes, ramps down; 70% light and 30% heavy routes |
+| `peak` | ramps to 10,000 users in 3 minutes, holds 2, ramps down; loose thresholds (under 5% failed, p95 under 3 s). Heavy: needs `ulimit -n 65535`, several GB of memory, and usually a machine other than the one running the API |
 | `stress` | 1000, 1500, 2000 and 2500 users, 1 minute each, to find where latency and errors start; loose thresholds |
 
 | Variable | Default | Meaning |

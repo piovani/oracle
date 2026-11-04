@@ -127,7 +127,7 @@ The binary also takes `-warmup`, `-lookback`, `-oversold` and `-min-volume`. The
 
 ## Project layout
 
-See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect. When a command, package, route or invariant changes, the `flow-diagram` skill (`.claude/skills/flow-diagram`) updates the diagram, its images and the docs that describe it, and the `postman-collection` skill does the same for the Postman collection. The `go-reviewer` skill reviews Go code against the project rules, and checks that these docs are up to date.
+See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect. When a command, package, route or invariant changes, the `flow-diagram` skill (`.claude/skills/flow-diagram`) updates the diagram, its images and the docs that describe it, and the `postman-collection` skill does the same for the Postman collection. The `go-reviewer` skill reviews Go code against the project rules, and checks that these docs are up to date. The `persona-review` skill looks at the project through five characters (a hacker, a careless user, a peak of 10,000 users, a picky senior dev and a dev reading it six months from now) and reports what each one finds.
 
 ```
 cmd/oracle/    the single binary; the first argument picks the command
