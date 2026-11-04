@@ -175,7 +175,7 @@ section > p { max-width: 68ch; color: var(--muted); }
   <header>
     <span class="eyebrow">oracle · Go + Postgres</span>
     <h1>From B3 quotes to the daily plan</h1>
-    <p class="lead">Three commands split the work: <code>sync</code> loads the history into the database, <code>recommend</code> builds tomorrow's plan, and <code>backtest</code> tests the same rule on past data. Pick a command to see its path.</p>
+    <p class="lead">Four commands split the work: <code>sync</code> loads the history into the database, <code>recommend</code> builds tomorrow's plan, <code>backtest</code> tests the same rule on past data, and <code>api</code> serves the data, the rule and the plan over HTTP. Pick a command to see its path.</p>
   </header>
 
   <section aria-labelledby="flow-title">
@@ -185,9 +185,10 @@ section > p { max-width: 68ch; color: var(--muted); }
       <button type="button" id="pick-sync" data-flow="sync" aria-pressed="false">make sync</button>
       <button type="button" id="pick-recommend" data-flow="recommend" aria-pressed="false">make recommend</button>
       <button type="button" id="pick-backtest" data-flow="backtest" aria-pressed="false">make backtest</button>
+      <button type="button" id="pick-api" data-flow="api" aria-pressed="false">oracle api</button>
     </div>
     <div class="diagram">
-      <svg id="flow" viewBox="0 0 960 840" role="img" aria-label="Flow diagram: B3, file parsing, sync, Postgres, history, recommend and backtest using internal/swing">
+      <svg id="flow" viewBox="0 0 960 840" role="img" aria-label="Flow diagram: B3, file parsing, sync, Postgres, history, recommend, backtest and the HTTP API using internal/swing">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
           <marker id="arrow-lit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
@@ -226,7 +227,7 @@ section > p { max-width: 68ch; color: var(--muted); }
       </div>
       <div class="rule">
         <h3>One rule</h3>
-        <p><code>recommend</code> and <code>backtest</code> call the same <code>internal/swing</code> functions. Change the rule and both change together, so the backtest keeps measuring the real plan.</p>
+        <p><code>recommend</code>, <code>backtest</code> and the API call the same <code>internal/swing</code> functions. Change the rule and all of them change together, so the backtest keeps measuring the real plan.</p>
       </div>
     </div>
   </section>
@@ -253,14 +254,15 @@ section > p { max-width: 68ch; color: var(--muted); }
     { id: "src",    x: 370, y: 20,  t: "B3 · COTAHIST",      s: "annual, monthly and daily ZIPs", kind: "external", flows: ["sync"] },
     { id: "b3",     x: 370, y: 120, t: "internal/b3",        s: "parses 245-column records",    flows: ["sync"] },
     { id: "sync",   x: 370, y: 220, t: "quote.SyncHistory",  s: "one transaction per file",      flows: ["sync"] },
-    { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest"] },
-    { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · connection · Ctrl+C",      flows: ["sync", "recommend", "backtest"] },
-    { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "only /health for now",        flows: [] },
-    { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "ON, PN and unit stocks only",        flows: ["recommend", "backtest"] },
+    { id: "db",     x: 370, y: 330, t: "Postgres",           s: "quotes · synced_files",          kind: "store", flows: ["sync", "recommend", "backtest", "api"] },
+    { id: "boot",   x: 650, y: 330, t: "internal/bootstrap", s: "config · connection · Ctrl+C",      flows: ["sync", "recommend", "backtest", "api"] },
+    { id: "handler", x: 90, y: 220, t: "internal/handler",   s: "routes · 9 s timeout · cache", flows: ["api"] },
+    { id: "api",    x: 90,  y: 330, t: "oracle api",         s: "read-only GET · Swagger UI",  flows: ["api"] },
+    { id: "hist",   x: 370, y: 440, t: "Store.History",      s: "ON, PN and unit stocks only",        flows: ["recommend", "backtest", "api"] },
     { id: "yahoo",  x: 110, y: 440, t: "Yahoo Finance",      s: "analyst price targets",       kind: "external", flows: ["recommend"] },
-    { id: "rec",    x: 110, y: 550, t: "oracle recommend",   s: "tiers forte → tendência",        flows: ["recommend"] },
+    { id: "rec",    x: 110, y: 550, t: "oracle recommend",   s: "plan.Build · forte → tendência", flows: ["recommend"] },
     { id: "bt",     x: 630, y: 550, t: "internal/backtest",  s: "prepare → simulate",             flows: ["backtest"] },
-    { id: "swing",  x: 370, y: 660, t: "internal/swing",     s: "Signal · Levels · Simulate · Rank", kind: "shared", flows: ["recommend", "backtest"] },
+    { id: "swing",  x: 370, y: 660, t: "internal/swing",     s: "Signal · Levels · Simulate · Rank", kind: "shared", flows: ["recommend", "backtest", "api"] },
     { id: "plan",   x: 110, y: 760, t: "Daily plan",       s: "buy limit · target · stop",      flows: ["recommend"] },
     { id: "report", x: 630, y: 760, t: "Report + CSV",    s: "return, max drawdown, Sharpe",    flows: ["backtest"] }
   ];
@@ -270,7 +272,9 @@ section > p { max-width: 68ch; color: var(--muted); }
     { d: "M480 280 L480 328",                 flows: ["sync"] },
     { d: "M480 390 L480 438",                 flows: ["recommend", "backtest"] },
     { d: "M650 360 L592 360", aux: true,      flows: ["sync", "recommend", "backtest"] },
-    { d: "M310 360 L368 360", aux: true,      flows: [] },
+    { d: "M200 328 L200 282",                 flows: ["api"] },
+    { d: "M310 250 L345 250 L345 350 L368 350", flows: ["api"] },
+    { d: "M90 250 L50 250 L50 710 L368 710",  flows: ["api"] },
     { d: "M420 500 L420 580 L332 580",        flows: ["recommend"] },
     { d: "M540 500 L540 580 L628 580",        flows: ["backtest"] },
     { d: "M220 500 L220 548",                 flows: ["recommend"] },
@@ -308,6 +312,7 @@ section > p { max-width: 68ch; color: var(--muted); }
         "<code>make sync</code> downloads B3's COTAHIST files and stores the quotes in Postgres. Run it every day after the close.",
         "<code>make recommend</code> reads the last 3 years, looks for signals on the latest session and prints the plan with quantity, entry, target and stop.",
         "<code>make backtest</code> runs the same rule session by session over past data, with a single cash balance, and compares it with the equal-weight universe.",
+        "<code>oracle api</code> serves the same data, the same rule and the same plan over HTTP as read-only JSON, documented in Swagger and Postman.",
         "Every command starts with <code>bootstrap.Start()</code>, which loads <code>.env</code>, connects to the database and handles Ctrl+C."
       ]
     },
@@ -324,8 +329,8 @@ section > p { max-width: 68ch; color: var(--muted); }
     recommend: {
       title: "make recommend",
       items: [
-        "<code>Store.History</code> loads 3 years of ON, PN and unit stocks, and the command warns if the latest session in the database is stale.",
-        "Only stocks that traded on the latest session are considered. <code>swing.Analyze</code> drops those with median volume below R$5M, simulates the rule over the history and checks for a signal today.",
+        "<code>Store.History</code> loads 3 years of ON, PN and unit stocks, and the command warns if the latest session in the database is stale. From here on <code>plan.Build</code> does the work.",
+        "Only stocks that traded on the latest session are considered. <code>swing.Scan</code> drops those with median volume below R$5M, simulates the rule over the history and checks for a signal today.",
         "A stock is eligible if it has a signal today, at least 5 trades in its history and positive expectancy.",
         "For eligible stocks, it fetches the price target from Yahoo Finance. A target below the current price drops the stock. If Yahoo fails, it continues with the history only.",
         "<code>swing.Rank</code> sorts by expectancy and upside, and sizes each position from capital divided by <code>TOP</code> and the maximum loss <code>RISK</code>.",
@@ -340,6 +345,17 @@ section > p { max-width: 68ch; color: var(--muted); }
         "<code>simulate</code> walks the sessions. On each one, <code>settle</code> closes positions that exited, <code>worth</code> computes equity, <code>rank</code> picks candidates and <code>buy</code> places the orders.",
         "<code>rank</code> only uses trades that had already ended on that day, so no decision sees the future.",
         "<code>Summary</code> computes return, max drawdown, Sharpe and the yearly table. With <code>CSV=</code>, every trade is written to a file."
+      ]
+    },
+    api: {
+      title: "oracle api",
+      items: [
+        "Serves on <code>PORT</code> (default 8080). Every route is a read-only <code>GET</code> that answers JSON; Swagger UI is at <code>/swagger/index.html</code>.",
+        "Quote routes (<code>/tickers</code>, <code>/sessions</code>) read through <code>quote.Store</code> and cover every spec, funds and ETFs included.",
+        "Strategy routes (<code>/strategy</code>, <code>/signals</code>, <code>/tickers/{ticker}/analysis</code> and <code>/trades</code>) call the same <code>internal/swing</code> functions as <code>recommend</code>, so the numbers match the CLI.",
+        "Plan routes (<code>/recommendations</code>, <code>/tickers/{ticker}/estimate</code>) call <code>plan.Build</code>. The server keeps one Yahoo session and its targets per trading session; if Yahoo fails, the plan ranks by history only.",
+        "<code>handler.Histories</code> caches the stock history until a new session is stored, so only the first call after a sync waits for the load. The series are shared read-only.",
+        "A request that takes more than 9 s answers <code>503</code>. Ctrl+C stops the server after the requests in flight finish."
       ]
     }
   };

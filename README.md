@@ -9,7 +9,7 @@
 
 B3 (Brazilian stock exchange) quote history stored in Postgres, plus a command that builds the day's trading plan from it.
 
-For a visual overview, open [`docs/flow.html`](docs/flow.html) in a browser. It shows the path of each command (`sync`, `recommend`, `backtest`), one trade session by session, and the rules the code must not break.
+For a visual overview, open [`docs/flow.html`](docs/flow.html) in a browser. It shows the path of each command (`sync`, `recommend`, `backtest`, `api`), one trade session by session, and the rules the code must not break.
 
 ## Setup
 
@@ -108,14 +108,15 @@ The binary also takes `-warmup`, `-lookback`, `-oversold` and `-min-volume`. The
 See [`docs/flow.html`](docs/flow.html) for a diagram of how these pieces connect.
 
 ```
-docs/          flow diagram (open flow.html in a browser)
 cmd/oracle/    the single binary; the first argument picks the command
 internal/
   command/     one function per command: Sync, Recommend, Backtest, API
   bootstrap/   startup shared by every command
   b3/          COTAHIST file reader
   quote/       quote model, sync and history loading
-  swing/       the strategy: signal, order prices, simulation and ranking
+  swing/       the strategy: signal, order prices, simulation, ranking, scan and track record
+  plan/        the trading plan (tiers, analyst estimates, sizing), shared by recommend and the API
+  handler/     HTTP handlers of the API, with the cached stock history
   backtest/    day-by-day portfolio simulation and results summary
   yahoo/       analyst estimates
 config/        reads .env
@@ -150,7 +151,7 @@ defer app.Close()
 
 `Start` loads the configuration, connects to the database and returns a context that is canceled on Ctrl+C. From there the command uses `app.DB` and `app.Config`.
 
-To change the strategy, go to `internal/swing`. `recommend` and `backtest` share the same signal and simulation functions, so a change to one applies to the other.
+To change the strategy, go to `internal/swing`. `recommend`, `backtest` and the API share the same signal and simulation functions, so a change to one applies to the others.
 
 ## HTTP API
 

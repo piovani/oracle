@@ -47,7 +47,7 @@ Invariants to preserve when changing strategy or backtest code:
 
 - **No look-ahead.** Every decision at day `d` uses only data known at that close. A ticker's track record only counts trades whose exit is on or before `d` (`series.rating`).
 - **Splits.** Prices are not adjusted. A day-over-day close ratio outside 0.6–1/0.6 is treated as a split: `swing.Segments` breaks the series (backtest) and `continuous` keeps only the part after the last split (recommend).
-- **Shared logic.** `recommend` and `backtest` must keep calling the same `swing` functions, so backtest results stay representative of the live plan.
+- **Shared logic.** `recommend`, `backtest` and the API must keep calling the same `swing` functions, so backtest results stay representative of the live plan.
 
 The HTTP API (`oracle api`, routes in `internal/command/api.go`, registered in `newMux`; handlers in `internal/handler` read through `handler.QuoteReader`/`StrategyReader`, subsets of `quote.Store`; `handler.Histories` caches the stock history per years value until `LatestSession` changes and is shared read-only, so `swing` and `plan` must never write into the series they get; `withTimeout` answers 503 after 9 s; Ctrl+C shuts the server down) is documented twice. Swagger: swag annotations (general info on `API`, one block per handler in `internal/handler`) generate `docs/docs.go`, `docs/swagger.json` and `docs/swagger.yaml` with `make swag` (never edit them by hand; CI fails if they are stale), served at `/swagger/index.html`. Postman: the collection `docs/postman-collection.json` (v2.1); when a route changes, update its request, examples and tests there and check with `postman collection run` against a running server.
 
