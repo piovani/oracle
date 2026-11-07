@@ -57,11 +57,12 @@ func serve(t *testing.T, h http.Handler) string {
 }
 
 // unreachable is a URL nothing listens on.
+// unreachable returns a URL nothing listens on. It is a fixed low port, not a
+// closed httptest server: that one frees an ephemeral port that a parallel
+// test's server can take, which made the connection succeed.
 func unreachable(t *testing.T) string {
 	t.Helper()
-	srv := httptest.NewServer(http.NotFoundHandler())
-	srv.Close()
-	return srv.URL
+	return "http://127.0.0.1:1"
 }
 
 func newTestClient(t *testing.T, base string) *Client {
